@@ -19,13 +19,38 @@ export default function AdminUsers() {
     is_active: true
   })
   const [selectedServices, setSelectedServices] = useState([])
+  const [selectedWilayas, setSelectedWilayas] = useState([])
+  const [selectedRegions, setSelectedRegions] = useState([])
+  const [wilayas, setWilayas] = useState([])
+  const [regions, setRegions] = useState([])
   const [errors, setErrors] = useState({})
 
   const services = ['SAWI', 'LTE', 'BLR', 'FTTH', 'LS/MPLS']
 
   useEffect(() => {
     loadUsers()
+    loadWilayasAndRegions()
   }, [])
+
+  const loadWilayasAndRegions = async () => {
+    try {
+      // Load wilayas
+      const { data: wilayasData } = await supabase
+        .from('wilayas')
+        .select('*')
+        .order('name_fr')
+      setWilayas(wilayasData || [])
+
+      // Load regions (NKC only for now)
+      const { data: regionsData } = await supabase
+        .from('regions')
+        .select('*')
+        .order('name_fr')
+      setRegions(regionsData || [])
+    } catch (error) {
+      console.error('Error loading wilayas and regions:', error)
+    }
+  }
 
   const loadUsers = async () => {
     try {
@@ -38,6 +63,18 @@ export default function AdminUsers() {
           *,
           technician_services!technician_services_user_id_fkey (
             service_type
+          ),
+          user_wilayas!user_wilayas_user_id_fkey (
+            wilaya_code,
+            wilayas!user_wilayas_wilaya_code_fkey (
+              name_fr
+            )
+          ),
+          user_regions!user_regions_user_id_fkey (
+            region_id,
+            regions!user_regions_region_id_fkey (
+              name_fr
+            )
           )
         `)
         .order('created_at', { ascending: false })
@@ -89,7 +126,9 @@ export default function AdminUsers() {
           full_name: formData.full_name,
           role: formData.role,
           is_active: formData.is_active,
-          services: formData.role === 'technicien' ? selectedServices : []
+          services: formData.role === 'technicien' ? selectedServices : [],
+          wilayas: selectedWilayas,
+          regions: selectedRegions
         }
 
         // Add email and password if changed
@@ -162,6 +201,35 @@ export default function AdminUsers() {
           await supabase
             .from('technician_services')
             .insert(servicesToInsert)
+        }
+
+        // Add region assignments for all users (not just technicians)
+        const { data: { user } } = await supabase.auth.getUser()
+        
+        // Add wilaya assignments
+        if (selectedWilayas.length > 0) {
+          const wilayasToInsert = selectedWilayas.map(wilayaCode => ({
+            user_id: authData.user.id,
+            wilaya_code: wilayaCode,
+            assigned_by: user?.id
+          }))
+
+          await supabase
+            .from('user_wilayas')
+            .insert(wilayasToInsert)
+        }
+
+        // Add region assignments (for NKC)
+        if (selectedRegions.length > 0) {
+          const regionsToInsert = selectedRegions.map(regionId => ({
+            user_id: authData.user.id,
+            region_id: regionId,
+            assigned_by: user?.id
+          }))
+
+          await supabase
+            .from('user_regions')
+            .insert(regionsToInsert)
         }
       }
 
@@ -248,6 +316,12 @@ export default function AdminUsers() {
     setSelectedServices(
       user.technician_services?.map(ts => ts.service_type) || []
     )
+    setSelectedWilayas(
+      user.user_wilayas?.map(uw => uw.wilaya_code) || []
+    )
+    setSelectedRegions(
+      user.user_regions?.map(ur => ur.region_id) || []
+    )
     setShowModal(true)
   }
 
@@ -267,6 +341,8 @@ export default function AdminUsers() {
       is_active: true
     })
     setSelectedServices([])
+    setSelectedWilayas([])
+    setSelectedRegions([])
     setErrors({})
   }
 
@@ -275,6 +351,22 @@ export default function AdminUsers() {
       prev.includes(service)
         ? prev.filter(s => s !== service)
         : [...prev, service]
+    )
+  }
+
+  const toggleWilaya = (wilayaCode) => {
+    setSelectedWilayas(prev =>
+      prev.includes(wilayaCode)
+        ? prev.filter(w => w !== wilayaCode)
+        : [...prev, wilayaCode]
+    )
+  }
+
+  const toggleRegion = (regionId) => {
+    setSelectedRegions(prev =>
+      prev.includes(regionId)
+        ? prev.filter(r => r !== regionId)
+        : [...prev, regionId]
     )
   }
 
@@ -321,6 +413,9 @@ export default function AdminUsers() {
                   {t('admin.services')}
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  {t('admin.regions')}
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   {t('ticket.status')}
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -352,6 +447,24 @@ export default function AdminUsers() {
                         {user.technician_services.map((ts, idx) => (
                           <span key={idx} className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded">
                             {ts.service_type}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-gray-400">-</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {user.role !== 'admin' && (user.user_wilayas?.length > 0 || user.user_regions?.length > 0) ? (
+                      <div className="space-y-1">
+                        {user.user_wilayas?.map((uw, idx) => (
+                          <span key={idx} className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded mr-1">
+                            {uw.wilayas?.name_fr || uw.wilaya_code}
+                          </span>
+                        ))}
+                        {user.user_regions?.map((ur, idx) => (
+                          <span key={idx} className="px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded mr-1">
+                            {ur.regions?.name_fr}
                           </span>
                         ))}
                       </div>
@@ -447,7 +560,7 @@ export default function AdminUsers() {
                   />
                 </div>
 
-                {/* Password (only for new users) */}
+                {/* Password (for new users) */}
                 {!editingUser && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -461,6 +574,24 @@ export default function AdminUsers() {
                       minLength={6}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
                     />
+                  </div>
+                )}
+
+                {/* Change Password (for existing users) */}
+                {editingUser && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      {t('auth.changePassword')}
+                    </label>
+                    <input
+                      type="password"
+                      value={formData.password}
+                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                      placeholder={t('auth.leaveEmptyToKeep')}
+                      minLength={6}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">{t('auth.leaveEmptyToKeepCurrent')}</p>
                   </div>
                 )}
 
@@ -516,6 +647,57 @@ export default function AdminUsers() {
                         </button>
                       ))}
                     </div>
+                  </div>
+                )}
+
+                {/* Wilaya Assignments (for all roles except admin) */}
+                {formData.role !== 'admin' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      {t('admin.assignWilayas')}
+                    </label>
+                    <div className="max-h-40 overflow-y-auto border border-gray-200 rounded-lg p-3">
+                      <div className="grid grid-cols-2 gap-2">
+                        {wilayas.map(wilaya => (
+                          <label key={wilaya.code} className="flex items-center space-x-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={selectedWilayas.includes(wilaya.code)}
+                              onChange={() => toggleWilaya(wilaya.code)}
+                              className="rounded border-gray-300 text-primary focus:ring-primary"
+                            />
+                            <span className="text-sm text-gray-700">{wilaya.name_fr}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500">{t('admin.wilayaAssignmentHelp')}</p>
+                  </div>
+                )}
+
+                {/* Region Assignments (for NKC - only if NKC is selected in wilayas) */}
+                {formData.role !== 'admin' && selectedWilayas.includes('NKC') && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      {t('admin.assignRegions')}
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {regions.filter(r => r.wilaya_code === 'NKC').map(region => (
+                        <button
+                          key={region.id}
+                          type="button"
+                          onClick={() => toggleRegion(region.id)}
+                          className={`px-4 py-2 rounded-lg border-2 transition-colors ${
+                            selectedRegions.includes(region.id)
+                              ? 'bg-primary text-white border-primary'
+                              : 'bg-white text-gray-700 border-gray-300 hover:border-primary'
+                          }`}
+                        >
+                          {region.name_fr}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500">{t('admin.regionAssignmentHelp')}</p>
                   </div>
                 )}
 

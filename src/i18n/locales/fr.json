@@ -14,7 +14,10 @@
     "invalidCredentials": "Nom d'utilisateur ou mot de passe incorrect",
     "accountInactive": "Ce compte est désactivé",
     "loginSuccess": "Connexion réussie",
-    "demoCredentials": "Identifiants de démo"
+    "demoCredentials": "Identifiants de démo",
+    "changePassword": "Changer le mot de passe",
+    "leaveEmptyToKeep": "Laisser vide pour conserver le mot de passe actuel",
+    "leaveEmptyToKeepCurrent": "Laisser vide pour conserver le mot de passe actuel"
   },
   "nav": {
     "dashboard": "Tableau de bord",
@@ -86,6 +89,11 @@
     "editUser": "Modifier l'Utilisateur",
     "deleteUser": "Supprimer l'Utilisateur",
     "assignServices": "Assigner des Services",
+    "assignWilayas": "Assigner des Wilayas",
+    "assignRegions": "Assigner des Régions",
+    "regions": "Régions Assignées",
+    "wilayaAssignmentHelp": "Sélectionnez les wilayas où cet utilisateur peut voir les tickets",
+    "regionAssignmentHelp": "Sélectionnez les régions de NKC où cet utilisateur peut voir les tickets",
     "userList": "Liste des Utilisateurs",
     "createUser": "Créer un Utilisateur",
     "fullName": "Nom Complet",
@@ -107,7 +115,13 @@
     "byWilaya": "Tickets par Région",
     "byRegion": "Tickets par Zone (NKC)",
     "byService": "Tickets par Service",
-    "recentTickets": "Tickets récents"
+    "recentTickets": "Tickets récents",
+    "overdueTickets": "Tickets en retard",
+    "overdueTicketsDesc": "Tickets dépassant 24h sans traitement",
+    "updateNow": "Mettre à jour maintenant",
+    "automaticUpdate": "Mise à jour automatique",
+    "automaticUpdateDesc": "Les tickets seront automatiquement marqués comme 'En retard' après 24h",
+    "overdueTicketsUpdated": "Tickets en retard mis à jour avec succès"
   },
   "validation": {
     "required": "Ce champ est obligatoire",
@@ -128,7 +142,8 @@
     "confirm": "Confirmer",
     "yes": "Oui",
     "no": "Non",
-    "optional": "optionnel"
+    "optional": "optionnel",
+    "updating": "Mise à jour..."
   }
 }
 

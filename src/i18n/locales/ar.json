@@ -14,7 +14,10 @@
     "invalidCredentials": "اسم المستخدم أو كلمة المرور غير صحيحة",
     "accountInactive": "هذا الحساب معطل",
     "loginSuccess": "تم تسجيل الدخول بنجاح",
-    "demoCredentials": "بيانات تجريبية"
+    "demoCredentials": "بيانات تجريبية",
+    "changePassword": "تغيير كلمة المرور",
+    "leaveEmptyToKeep": "اتركها فارغة للحفاظ على كلمة المرور الحالية",
+    "leaveEmptyToKeepCurrent": "اتركها فارغة للحفاظ على كلمة المرور الحالية"
   },
   "nav": {
     "dashboard": "لوحة التحكم",
@@ -86,6 +89,11 @@
     "editUser": "تعديل المستخدم",
     "deleteUser": "حذف المستخدم",
     "assignServices": "تعيين الخدمات",
+    "assignWilayas": "تعيين الولايات",
+    "assignRegions": "تعيين المناطق",
+    "regions": "المناطق المعينة",
+    "wilayaAssignmentHelp": "حدد الولايات التي يمكن لهذا المستخدم مشاهدة التذاكر فيها",
+    "regionAssignmentHelp": "حدد مناطق انواكشوط التي يمكن لهذا المستخدم مشاهدة التذاكر فيها",
     "userList": "قائمة المستخدمين",
     "createUser": "إنشاء مستخدم",
     "fullName": "الاسم الكامل",
@@ -107,7 +115,13 @@
     "byWilaya": "التذاكر حسب المنطقة",
     "byRegion": "التذاكر حسب المنطقة (نواكشوط)",
     "byService": "التذاكر حسب الخدمة",
-    "recentTickets": "التذاكر الأخيرة"
+    "recentTickets": "التذاكر الأخيرة",
+    "overdueTickets": "التذاكر المتأخرة",
+    "overdueTicketsDesc": "التذاكر التي تجاوزت 24 ساعة دون معالجة",
+    "updateNow": "تحديث الآن",
+    "automaticUpdate": "التحديث التلقائي",
+    "automaticUpdateDesc": "سيتم وضع علامة على التذاكر على أنها 'متأخرة' تلقائيًا بعد 24 ساعة",
+    "overdueTicketsUpdated": "تم تحديث التذاكر المتأخرة بنجاح"
   },
   "validation": {
     "required": "هذا الحقل مطلوب",
@@ -127,7 +141,8 @@
     "confirm": "تأكيد",
     "yes": "نعم",
     "no": "لا",
-    "optional": "اختياري"
+    "optional": "اختياري",
+    "updating": "جاري التحديث..."
   }
 }
 

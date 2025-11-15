@@ -14,7 +14,10 @@
     "invalidCredentials": "Invalid username or password",
     "accountInactive": "This account is inactive",
     "loginSuccess": "Login successful",
-    "demoCredentials": "Demo credentials"
+    "demoCredentials": "Demo credentials",
+    "changePassword": "Change Password",
+    "leaveEmptyToKeep": "Leave empty to keep current password",
+    "leaveEmptyToKeepCurrent": "Leave empty to keep current password"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -86,6 +89,11 @@
     "editUser": "Edit User",
     "deleteUser": "Delete User",
     "assignServices": "Assign Services",
+    "assignWilayas": "Assign Wilayas",
+    "assignRegions": "Assign Regions",
+    "regions": "Assigned Regions",
+    "wilayaAssignmentHelp": "Select the wilayas where this user can view tickets",
+    "regionAssignmentHelp": "Select the NKC regions where this user can view tickets",
     "userList": "User List",
     "createUser": "Create User",
     "fullName": "Full Name",
@@ -107,7 +115,13 @@
     "byWilaya": "Tickets by Region",
     "byRegion": "Tickets by Zone (NKC)",
     "byService": "Tickets by Service",
-    "recentTickets": "Recent Tickets"
+    "recentTickets": "Recent Tickets",
+    "overdueTickets": "Overdue Tickets",
+    "overdueTicketsDesc": "Tickets exceeding 24h without treatment",
+    "updateNow": "Update Now",
+    "automaticUpdate": "Automatic Update",
+    "automaticUpdateDesc": "Tickets will be automatically marked as 'Late' after 24h",
+    "overdueTicketsUpdated": "Overdue tickets updated successfully"
   },
   "validation": {
     "required": "This field is required",
@@ -127,7 +141,8 @@
     "confirm": "Confirm",
     "yes": "Yes",
     "no": "No",
-    "optional": "optional"
+    "optional": "optional",
+    "updating": "Updating..."
   }
 }
 

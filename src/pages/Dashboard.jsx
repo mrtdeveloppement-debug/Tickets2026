@@ -2,12 +2,14 @@ import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { getOverdueTicketsCount, checkAndUpdateOverdueTickets } from '../utils/ticketStatus'
 import { 
   Ticket, 
   CheckCircle, 
   Clock, 
   AlertCircle,
-  TrendingUp 
+  TrendingUp,
+  RefreshCw
 } from 'lucide-react'
 import {
   Chart as ChartJS,
@@ -90,6 +92,8 @@ export default function Dashboard() {
   const [sawiByRegion, setSawiByRegion] = useState([])
   const [lateSawiByRegion, setLateSawiByRegion] = useState([])
   const [lateSawiNkcByZone, setLateSawiNkcByZone] = useState([])
+  const [overdueCount, setOverdueCount] = useState(0)
+  const [updatingOverdue, setUpdatingOverdue] = useState(false)
 
   useEffect(() => {
     loadDashboardData()
@@ -116,6 +120,9 @@ export default function Dashboard() {
       const unreachable = tickets.filter(t => t.status === 'injoignable').length
 
       setStats({ total, open, closed, late, assigned, payment, inProgress, unreachable })
+
+      // Load overdue tickets count
+      await loadOverdueCount()
 
       // Group by wilaya
       const wilayaGroups = tickets.reduce((acc, ticket) => {
@@ -231,6 +238,43 @@ export default function Dashboard() {
       setLoading(false)
     }
   }
+
+  // Function to manually update overdue tickets
+  const handleUpdateOverdueTickets = async () => {
+    setUpdatingOverdue(true)
+    try {
+      const result = await checkAndUpdateOverdueTickets()
+      if (result.success) {
+        // Refresh the dashboard data
+        await loadDashboardData()
+        alert(t('dashboard.overdueTicketsUpdated'))
+      } else {
+        alert(t('common.error') + ': ' + result.error)
+      }
+    } catch (error) {
+      console.error('Error updating overdue tickets:', error)
+      alert(t('common.error'))
+    } finally {
+      setUpdatingOverdue(false)
+    }
+  }
+
+  // Function to get overdue tickets count
+  const loadOverdueCount = async () => {
+    try {
+      const result = await getOverdueTicketsCount()
+      if (result.success) {
+        setOverdueCount(result.count)
+      }
+    } catch (error) {
+      console.error('Error loading overdue count:', error)
+    }
+  }
+
+  // Load overdue count on component mount
+  useEffect(() => {
+    loadOverdueCount()
+  }, [])
 
   const statCards = [
     { 
@@ -357,6 +401,31 @@ export default function Dashboard() {
             </div>
           </button>
         ))}
+      </div>
+
+      {/* Overdue Tickets Section */}
+      <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-gray-800">{t('dashboard.overdueTickets')}</h2>
+            <p className="text-gray-600 text-sm mt-1">
+              {t('dashboard.overdueTicketsDesc')}: {overdueCount}
+            </p>
+          </div>
+          <button
+            onClick={handleUpdateOverdueTickets}
+            disabled={updatingOverdue}
+            className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg transition-colors flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <RefreshCw size={16} className={updatingOverdue ? 'animate-spin' : ''} />
+            <span>{updatingOverdue ? t('common.updating') : t('dashboard.updateNow')}</span>
+          </button>
+        </div>
+        <div className="mt-4 p-4 bg-red-50 rounded-lg">
+          <p className="text-sm text-red-700">
+            <strong>{t('dashboard.automaticUpdate')}:</strong> {t('dashboard.automaticUpdateDesc')}
+          </p>
+        </div>
       </div>
 
       {/* Charts */}

@@ -108,7 +108,7 @@ serve(async (req) => {
       )
     }
 
-    console.log('🔄 Mise à jour de l\'utilisateur:', userId, updates)
+    console.log('🔄 Mise à jour de l\utilisateur:', userId, updates)
 
     // 1. Mettre à jour la table users
     const dbUpdates: any = {}
@@ -155,7 +155,7 @@ serve(async (req) => {
         return new Response(
           JSON.stringify({ 
             success: true,
-            warning: 'Utilisateur mis à jour dans la base de données mais erreur lors de la mise à jour de l\'authentification'
+            warning: 'Utilisateur mis à jour dans la base de données mais erreur lors de la mise à jour de l\authentification'
           }),
           { 
             status: 200,
@@ -191,6 +191,54 @@ serve(async (req) => {
       console.log('✅ Services du technicien mis à jour')
     }
 
+    // 4. Mettre à jour les assignations de wilayas si nécessaire
+    if (updates.wilayas !== undefined && updates.role !== 'admin') {
+      // Supprimer les anciennes wilayas
+      await supabaseAdmin
+        .from('user_wilayas')
+        .delete()
+        .eq('user_id', userId)
+
+      // Ajouter les nouvelles wilayas
+      if (updates.wilayas.length > 0) {
+        const wilayasToInsert = updates.wilayas.map((wilayaCode: string) => ({
+          user_id: userId,
+          wilaya_code: wilayaCode,
+          assigned_by: user.id
+        }))
+
+        await supabaseAdmin
+          .from('user_wilayas')
+          .insert(wilayasToInsert)
+      }
+
+      console.log('✅ Wilayas assignées mises à jour')
+    }
+
+    // 5. Mettre à jour les assignations de régions si nécessaire
+    if (updates.regions !== undefined && updates.role !== 'admin') {
+      // Supprimer les anciennes régions
+      await supabaseAdmin
+        .from('user_regions')
+        .delete()
+        .eq('user_id', userId)
+
+      // Ajouter les nouvelles régions
+      if (updates.regions.length > 0) {
+        const regionsToInsert = updates.regions.map((regionId: string) => ({
+          user_id: userId,
+          region_id: regionId,
+          assigned_by: user.id
+        }))
+
+        await supabaseAdmin
+          .from('user_regions')
+          .insert(regionsToInsert)
+      }
+
+      console.log('✅ Régions assignées mises à jour')
+    }
+
     return new Response(
       JSON.stringify({ 
         success: true,
@@ -213,4 +261,3 @@ serve(async (req) => {
     )
   }
 })
-
