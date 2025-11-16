@@ -374,7 +374,7 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold text-gray-800">{t('dashboard.title')}</h1>
+      
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -403,31 +403,13 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* Overdue Tickets Section */}
-      <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-gray-800">{t('dashboard.overdueTickets')}</h2>
-            <p className="text-gray-600 text-sm mt-1">
-              {t('dashboard.overdueTicketsDesc')}: {overdueCount}
-            </p>
-          </div>
-        </div>
-        <div className="mt-4 p-4 bg-red-50 rounded-lg">
-          <p className="text-sm text-red-700">
-            <strong>{t('dashboard.automaticUpdate')}:</strong> {t('dashboard.automaticUpdateDesc')}
-          </p>
-        </div>
-      </div>
+      
 
       {/* Charts */}
 
       {/* NEW CHARTS - OPEN TICKETS ANALYSIS */}
       <div className="space-y-6 mt-8">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">📊 Analyse des Tickets Ouverts</h2>
-          <p className="text-gray-500 text-sm mt-1">Suivi détaillé des performances et délais</p>
-        </div>
+        
 
         {/* Row 1: Chart 1 & 2 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
