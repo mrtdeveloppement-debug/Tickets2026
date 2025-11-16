@@ -9,7 +9,9 @@ import {
   Clock, 
   AlertCircle,
   TrendingUp,
-  RefreshCw
+  RefreshCw,
+  Search,
+  X
 } from 'lucide-react'
 import {
   Chart as ChartJS,
@@ -68,6 +70,7 @@ ChartJS.register(valueLabelPlugin)
 export default function Dashboard() {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const [searchInput, setSearchInput] = useState('')
   const [stats, setStats] = useState({
     total: 0,
     open: 0,
@@ -106,6 +109,7 @@ export default function Dashboard() {
       const { data: tickets, error } = await supabase
         .from('tickets')
         .select('*, wilayas(name_fr), regions(name_fr)')
+        .or('category.is.null,category.eq.reclamation')
         .order('created_at', { ascending: false })
 
       if (error) throw error
@@ -391,6 +395,37 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-gray-900">Dashboard Réclamations</h1>
+        <Link to="/tickets" className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-dark">Voir les réclamations</Link>
+      </div>
+      <div className="flex justify-end">
+        <div className="relative w-full max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+          <input
+            type="text"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/tickets?q=${encodeURIComponent(searchInput)}`) }}
+            placeholder={t('ticket.search')}
+            className="w-full pl-10 pr-10 py-3 rounded-full bg-white shadow border border-gray-200 focus:ring-2 focus:ring-primary focus:outline-none"
+          />
+          {searchInput && (
+            <button
+              onClick={() => setSearchInput('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            >
+              <X size={18} />
+            </button>
+          )}
+        </div>
+        <button
+          onClick={() => navigate(`/tickets?q=${encodeURIComponent(searchInput)}`)}
+          className="ml-3 px-4 py-2 rounded-full bg-primary text-white hover:bg-primary-dark"
+        >
+          Rechercher
+        </button>
+      </div>
       
 
       {/* Stats Cards */}

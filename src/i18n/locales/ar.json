@@ -60,7 +60,14 @@
     "en_cours": "قيد التنفيذ",
     "injoignable": "غير متاح",
     "en_retard": "متأخر",
-    "fermé": "مغلق"
+    "fermé": "مغلق",
+    "optimisation": "تحسين",
+    "matériel": "مواد",
+    "équipe_installation": "فريق التركيب",
+    "installé": "مركب",
+    "annulé": "ملغى",
+    "installation_impossible": "تركيب غير ممكن",
+    "extension": "تمديد"
   },
   "subscriptionTypes": {
     "SAWI": "SAWI",

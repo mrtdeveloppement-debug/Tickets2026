@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { Save, X } from 'lucide-react'
 
@@ -12,6 +12,7 @@ export default function NewTicket() {
   const [regions, setRegions] = useState([])
   const [errors, setErrors] = useState({})
   const [category, setCategory] = useState('reclamation')
+  const location = useLocation()
 
   const [formData, setFormData] = useState({
     subscriber_number: '',
@@ -29,6 +30,14 @@ export default function NewTicket() {
   useEffect(() => {
     loadReferenceData()
   }, [])
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    const cat = params.get('category')
+    if (cat === 'installation' || cat === 'reclamation') {
+      setCategory(cat)
+    }
+  }, [location.search])
 
   const loadReferenceData = async () => {
     try {
@@ -191,7 +200,7 @@ export default function NewTicket() {
       })
 
       alert(t('ticket.createSuccess'))
-      navigate(category === 'installation' ? '/installation' : '/tickets')
+      navigate(category === 'installation' ? '/tickets?category=installation' : '/tickets')
     } catch (error) {
       console.error('Error creating ticket:', error)
       alert(`${t('common.error')}: ${error.message || ''}`)

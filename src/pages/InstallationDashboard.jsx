@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
+import { useNavigate, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Bar } from 'react-chartjs-2'
 import {
@@ -11,19 +12,30 @@ import {
   Legend,
 } from 'chart.js'
 import { supabase } from '../lib/supabase'
-import { Wrench, Users, CheckCircle2, XCircle, PhoneOff, Ban, Settings } from 'lucide-react'
+import { Wrench, Users, CheckCircle2, XCircle, PhoneOff, Ban, Settings, Search, X, GitBranch } from 'lucide-react'
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend)
 
 export default function InstallationDashboard() {
   const { t } = useTranslation()
   const [loading, setLoading] = useState(true)
-  const [tickets, setTickets] = useState([])
   const [serviceDelayData, setServiceDelayData] = useState({})
   const [lateByDays, setLateByDays] = useState([])
   const [sawiByRegion, setSawiByRegion] = useState([])
   const [lateSawiByRegion, setLateSawiByRegion] = useState([])
+  const [installationTickets, setInstallationTickets] = useState([])
   const [statusCounts, setStatusCounts] = useState({})
+  const [selectedStatus, setSelectedStatus] = useState('')
+  const [installSearch, setInstallSearch] = useState('')
+  const [installSearchInput, setInstallSearchInput] = useState('')
+  const ticketsRef = useRef(null)
+  const navigate = useNavigate()
+
+  const selectStatus = (status) => {
+    setSelectedStatus(prev => (prev === status ? '' : status))
+    navigate(`/tickets?category=installation&install_status=${encodeURIComponent(status)}`)
+    if (ticketsRef.current) ticketsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 
   useEffect(() => {
     const loadData = async () => {
@@ -35,7 +47,7 @@ export default function InstallationDashboard() {
           .order('created_at', { ascending: false })
 
         if (error) throw error
-        setTickets(data || [])
+        setInstallationTickets(data || [])
 
         const allInstallation = (data || [])
         const openTickets = allInstallation.filter(t => t.installation_status !== 'installé' && t.installation_status !== 'annulé')
@@ -50,6 +62,13 @@ export default function InstallationDashboard() {
           if (days >= 1) serviceGroups[s].late++
         })
         setServiceDelayData(serviceGroups)
+
+        const counts = {}
+        allInstallation.forEach(t => {
+          const s = (t.installation_status || 'inconnu')
+          counts[s] = (counts[s] || 0) + 1
+        })
+        setStatusCounts(counts)
 
         const lateByDaysCount = {}
         openTickets.forEach(ticket => {
@@ -80,6 +99,37 @@ export default function InstallationDashboard() {
           }
         })
         setLateSawiByRegion(Object.entries(lateSawiRegionGroups))
+
+        const now = Date.now()
+        for (const t of allInstallation) {
+          const created = new Date(t.created_at).getTime()
+          const hours = Math.floor((now - created) / (1000 * 60 * 60))
+          let apply = false
+          let toStatus = t.status
+          let note = ''
+          if (t.installation_status === 'matériel' && hours >= 48 && t.status !== 'en_retard') {
+            apply = true
+            toStatus = 'en_retard'
+            note = 'retard matériel (>48h)'
+          } else if (t.installation_status === 'matériel' && hours >= 24 && (!t.notes || !t.notes.includes('retard matériel'))) {
+            apply = true
+            note = 'retard matériel (>24h)'
+          } else if (t.installation_status === 'équipe_installation' && hours >= 48 && t.status !== 'en_retard') {
+            apply = true
+            toStatus = 'en_retard'
+            note = 'retard installation (>48h)'
+          }
+          if (apply) {
+            await supabase
+              .from('tickets')
+              .update({
+                status: toStatus,
+                notes: t.notes ? `${t.notes}\n${note}` : note,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', t.id)
+          }
+        }
       } catch (e) {
         console.error('Error loading installation dashboard:', e)
       } finally {
@@ -102,82 +152,117 @@ export default function InstallationDashboard() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">{t('installation.title') || 'Dashboard Installation'}</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-gray-900">{t('installation.title') || 'Dashboard Installation'}</h1>
+        <Link to="/tickets?category=installation" className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-dark">Voir les installations</Link>
+      </div>
+
+      <div className="flex items-center justify-end">
+        <div className="relative w-full max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+          <input
+            type="text"
+            value={installSearchInput}
+            onChange={(e) => setInstallSearchInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/tickets?category=installation&q=${encodeURIComponent(installSearchInput)}`) }}
+            placeholder="Rechercher..."
+            className="w-full pl-10 pr-10 py-3 rounded-full bg-white shadow border border-gray-200 focus:ring-2 focus:ring-primary focus:outline-none"
+          />
+          {installSearch && (
+            <button
+              onClick={() => { setInstallSearch(''); setInstallSearchInput('') }}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            >
+              <X size={18} />
+            </button>
+          )}
+        </div>
+        <button
+          onClick={() => navigate(`/tickets?category=installation&q=${encodeURIComponent(installSearchInput)}`)}
+          className="ml-3 px-4 py-2 rounded-full bg-primary text-white hover:bg-primary-dark"
+        >
+          Rechercher
+        </button>
+      </div>
 
       {/* Statuts Installation - 7 icônes */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Matériel */}
-        <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between">
+        <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between cursor-pointer" onClick={() => selectStatus('matériel')}>
           <div>
             <div className="text-sm text-gray-500">Matériel</div>
             <div className="text-2xl font-bold">{statusCounts['matériel'] || 0}</div>
           </div>
-          <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-            <Wrench className="text-blue-600" size={20} />
-          </div>
+          <button className={`p-3 bg-blue-600 rounded-lg flex items-center justify-center ${selectedStatus==='matériel'?'ring-2 ring-blue-400':''}`}>
+            <Wrench className="text-white" size={24} />
+          </button>
         </div>
-        {/* Équipe installation */}
-        <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between">
+        <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between cursor-pointer" onClick={() => selectStatus('équipe_installation')}>
           <div>
             <div className="text-sm text-gray-500">Équipe installation</div>
             <div className="text-2xl font-bold">{statusCounts['équipe_installation'] || 0}</div>
           </div>
-          <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
-            <Users className="text-indigo-600" size={20} />
-          </div>
+          <button className={`p-3 bg-indigo-600 rounded-lg flex items-center justify-center ${selectedStatus==='équipe_installation'?'ring-2 ring-indigo-400':''}`}>
+            <Users className="text-white" size={24} />
+          </button>
         </div>
-        {/* Installé */}
-        <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between">
+        <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between cursor-pointer" onClick={() => selectStatus('installé')}>
           <div>
             <div className="text-sm text-gray-500">Installé</div>
             <div className="text-2xl font-bold">{statusCounts['installé'] || 0}</div>
           </div>
-          <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-            <CheckCircle2 className="text-green-600" size={20} />
-          </div>
+          <button className={`p-3 bg-green-600 rounded-lg flex items-center justify-center ${selectedStatus==='installé'?'ring-2 ring-green-400':''}`}>
+            <CheckCircle2 className="text-white" size={24} />
+          </button>
         </div>
-        {/* Annulé */}
-        <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between">
+        <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between cursor-pointer" onClick={() => selectStatus('annulé')}>
           <div>
             <div className="text-sm text-gray-500">Annulé</div>
             <div className="text-2xl font-bold">{statusCounts['annulé'] || 0}</div>
           </div>
-          <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
-            <XCircle className="text-orange-600" size={20} />
-          </div>
+          <button className={`p-3 bg-orange-600 rounded-lg flex items-center justify-center ${selectedStatus==='annulé'?'ring-2 ring-orange-400':''}`}>
+            <XCircle className="text-white" size={24} />
+          </button>
         </div>
-        {/* Injoignable */}
-        <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between">
+        <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between cursor-pointer" onClick={() => selectStatus('injoignable')}>
           <div>
             <div className="text-sm text-gray-500">Injoignable</div>
             <div className="text-2xl font-bold">{statusCounts['injoignable'] || 0}</div>
           </div>
-          <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center">
-            <PhoneOff className="text-yellow-600" size={20} />
-          </div>
+          <button className={`p-3 bg-yellow-600 rounded-lg flex items-center justify-center ${selectedStatus==='injoignable'?'ring-2 ring-yellow-400':''}`}>
+            <PhoneOff className="text-white" size={24} />
+          </button>
         </div>
-        {/* Installation Impossible */}
-        <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between">
+        <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between cursor-pointer" onClick={() => selectStatus('installation_impossible')}>
           <div>
             <div className="text-sm text-gray-500">Installation Impossible</div>
             <div className="text-2xl font-bold">{statusCounts['installation_impossible'] || 0}</div>
           </div>
-          <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
-            <Ban className="text-red-600" size={20} />
-          </div>
+          <button className={`p-3 bg-red-600 rounded-lg flex items-center justify-center ${selectedStatus==='installation_impossible'?'ring-2 ring-red-400':''}`}>
+            <Ban className="text-white" size={24} />
+          </button>
         </div>
-        {/* Optimisation */}
-        <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between">
+        <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between cursor-pointer" onClick={() => selectStatus('optimisation')}>
           <div>
             <div className="text-sm text-gray-500">Optimisation</div>
             <div className="text-2xl font-bold">{statusCounts['optimisation'] || 0}</div>
           </div>
-          <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-            <Settings className="text-purple-600" size={20} />
+          <button className={`p-3 bg-purple-600 rounded-lg flex items-center justify-center ${selectedStatus==='optimisation'?'ring-2 ring-purple-400':''}`}>
+            <Settings className="text-white" size={24} />
+          </button>
+        </div>
+        <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between cursor-pointer" onClick={() => selectStatus('extension')}>
+          <div>
+            <div className="text-sm text-gray-500">Extension</div>
+            <div className="text-2xl font-bold">{statusCounts['extension'] || 0}</div>
           </div>
+          <button className={`p-3 bg-teal-600 rounded-lg flex items-center justify-center ${selectedStatus==='extension'?'ring-2 ring-teal-400':''}`}>
+            <GitBranch className="text-white" size={24} />
+          </button>
         </div>
       </div>
 
+      
+  
         {/* Graph 1: Situation par Service et Retard */}
         <div className="bg-white rounded-lg shadow-md p-6">
           <h3 className="text-lg font-bold text-gray-900 mb-4">Graph 1: Situation par Service et Retard</h3>
@@ -280,6 +365,61 @@ export default function InstallationDashboard() {
             <p className="text-gray-500 text-sm">Aucun ticket SAWI en retard</p>
           )}
         </div>
+
+      {/* Tickets récents */}
+      <div className="bg-white rounded-lg shadow-md overflow-hidden">
+        <div className="px-6 py-4 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-gray-900">Tickets récents</h2>
+        </div>
+        <div className="overflow-x-auto" ref={ticketsRef}>
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">N° Ticket</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">N° d&apos;abonné</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Téléphone</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Région</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Zone</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type d&apos;abonnement</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Statut installation</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {(() => {
+                const base = selectedStatus ? installationTickets.filter(t => (t.installation_status || '').toLowerCase() === selectedStatus) : installationTickets
+                const s = (installSearch || '').toLowerCase()
+                const filtered = s
+                  ? base.filter(t => (
+                      (t.ticket_number || '').toLowerCase().includes(s) ||
+                      (t.subscriber_number || '').toLowerCase().includes(s) ||
+                      (t.phone || '').toLowerCase().includes(s) ||
+                      (t.wilayas?.name_fr || t.wilaya_code || '').toLowerCase().includes(s) ||
+                      (t.regions?.name_fr || '').toLowerCase().includes(s) ||
+                      (t.subscription_type || '').toLowerCase().includes(s)
+                    ))
+                  : base
+                const limited = selectedStatus ? filtered : filtered.slice(0, 10)
+                return limited.map(t => (
+                  <tr key={t.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 text-sm font-medium text-primary">{t.ticket_number}</td>
+                    <td className="px-6 py-4 text-sm text-gray-900">{t.subscriber_number}</td>
+                    <td className="px-6 py-4 text-sm text-gray-900">{t.phone}</td>
+                    <td className="px-6 py-4 text-sm text-gray-500">{t.wilayas?.name_fr || t.wilaya_code}</td>
+                    <td className="px-6 py-4 text-sm text-gray-500">{t.regions?.name_fr || '-'}</td>
+                    <td className="px-6 py-4 text-sm text-gray-500">{t.subscription_type}</td>
+                    <td className="px-6 py-4 text-sm text-gray-500">{t.installation_status || '-'}</td>
+                  </tr>
+                ))
+              })()}
+              {installationTickets.length === 0 && (
+                <tr>
+                  <td className="px-6 py-4 text-center text-sm text-gray-500" colSpan="7">Aucun ticket d&apos;installation</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
+    </div>
   )
 }

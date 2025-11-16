@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { Search, Filter, Eye, Edit, History, Download } from 'lucide-react'
+import { Search, Filter, Eye, History, Download } from 'lucide-react'
 
 export default function TicketList() {
   const { t, i18n } = useTranslation()
@@ -12,20 +12,46 @@ export default function TicketList() {
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [category, setCategory] = useState('reclamation')
   const location = useLocation()
 
   useEffect(() => {
     loadTickets()
   }, [])
 
+  const filterTickets = useCallback(() => {
+    let filtered = tickets
+
+    if (searchTerm) {
+      filtered = filtered.filter(ticket =>
+        ticket.ticket_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        ticket.client_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        ticket.subscriber_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        ticket.phone.includes(searchTerm)
+      )
+    }
+
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter(ticket => (category === 'installation' ? (ticket.installation_status || '').toLowerCase() === statusFilter : ticket.status === statusFilter))
+    }
+
+    setFilteredTickets(filtered)
+  }, [tickets, searchTerm, statusFilter, category])
+
   useEffect(() => {
     filterTickets()
-  }, [searchTerm, statusFilter, tickets])
+  }, [filterTickets])
 
   useEffect(() => {
     const params = new URLSearchParams(location.search)
     const status = params.get('status')
+    const q = params.get('q')
+    const cat = params.get('category')
+    const installStatus = params.get('install_status')
     if (status) setStatusFilter(status)
+    if (q) setSearchTerm(q)
+    if (cat === 'installation' || cat === 'reclamation') setCategory(cat)
+    if (installStatus && cat === 'installation') setStatusFilter(installStatus)
   }, [location.search])
 
   const loadTickets = async () => {
@@ -33,6 +59,7 @@ export default function TicketList() {
       const { data, error } = await supabase
         .from('tickets')
         .select('*, wilayas(name_fr, name_ar, name_en), regions(name_fr, name_ar, name_en)')
+        .or(category === 'installation' ? 'category.eq.installation' : 'category.is.null,category.eq.reclamation')
         .order('created_at', { ascending: false })
 
       if (error) throw error
@@ -44,26 +71,7 @@ export default function TicketList() {
     }
   }
 
-  const filterTickets = () => {
-    let filtered = tickets
-
-    // Search filter
-    if (searchTerm) {
-      filtered = filtered.filter(ticket =>
-        ticket.ticket_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        ticket.client_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        ticket.subscriber_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        ticket.phone.includes(searchTerm)
-      )
-    }
-
-    // Status filter
-    if (statusFilter !== 'all') {
-      filtered = filtered.filter(ticket => ticket.status === statusFilter)
-    }
-
-    setFilteredTickets(filtered)
-  }
+  
 
   const updateTicketStatus = async (ticketId, newStatus) => {
     try {
@@ -98,7 +106,9 @@ export default function TicketList() {
     }
   }
 
-  const statuses = ['nouveau', 'assigné', 'paiement', 'en_cours', 'injoignable', 'en_retard', 'fermé']
+  const statuses = category === 'installation'
+    ? ['matériel', 'équipe_installation', 'installé', 'annulé', 'injoignable', 'installation_impossible', 'optimisation', 'extension']
+    : ['nouveau', 'assigné', 'paiement', 'en_cours', 'injoignable', 'en_retard', 'fermé', 'optimisation']
 
   if (loading) {
     return (
@@ -114,7 +124,7 @@ export default function TicketList() {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold text-gray-800">{t('ticket.title')}</h1>
+        <h1 className="text-3xl font-bold text-gray-800">{category === 'installation' ? 'Installations' : 'Réclamations'}</h1>
         <Link
           to="/tickets/new"
           className="bg-primary hover:bg-primary-dark text-white px-6 py-2 rounded-lg transition-colors"
@@ -250,7 +260,7 @@ export default function TicketList() {
                   {t('ticket.subscriptionType')}
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  {t('ticket.status')}
+                  {category === 'installation' ? 'Statut installation' : t('ticket.status')}
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   {t('ticket.actions')}
@@ -282,20 +292,26 @@ export default function TicketList() {
                     {ticket.subscription_type}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <select
-                      value={ticket.status}
-                      onChange={(e) => updateTicketStatus(ticket.id, e.target.value)}
-                      className={`px-2 py-1 text-xs font-semibold rounded-full border-0 cursor-pointer ${
-                        ticket.status === 'fermé' ? 'bg-gray-100 text-gray-800' :
-                        ticket.status === 'en_retard' ? 'bg-red-100 text-red-800' :
-                        ticket.status === 'en_cours' ? 'bg-blue-100 text-blue-800' :
-                        'bg-green-100 text-green-800'
-                      }`}
-                    >
-                      {statuses.map(status => (
-                        <option key={status} value={status}>{t(`status.${status}`)}</option>
-                      ))}
-                    </select>
+                    {category === 'installation' ? (
+                      <span className="px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">
+                        {ticket.installation_status || '-'}
+                      </span>
+                    ) : (
+                      <select
+                        value={ticket.status}
+                        onChange={(e) => updateTicketStatus(ticket.id, e.target.value)}
+                        className={`px-2 py-1 text-xs font-semibold rounded-full border-0 cursor-pointer ${
+                          ticket.status === 'fermé' ? 'bg-gray-100 text-gray-800' :
+                          ticket.status === 'en_retard' ? 'bg-red-100 text-red-800' :
+                          ticket.status === 'en_cours' ? 'bg-blue-100 text-blue-800' :
+                          'bg-green-100 text-green-800'
+                        }`}
+                      >
+                        {statuses.map(status => (
+                          <option key={status} value={status}>{t(`status.${status}`)}</option>
+                        ))}
+                      </select>
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     <div className="flex space-x-2">
@@ -323,7 +339,7 @@ export default function TicketList() {
 
         {filteredTickets.length === 0 && (
           <div className="text-center py-12">
-            <p className="text-gray-500">{t('ticket.all')} - {t('common.loading')}</p>
+            <p className="text-gray-500">Aucun résultat</p>
           </div>
         )}
       </div>

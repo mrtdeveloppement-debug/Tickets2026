@@ -60,7 +60,14 @@
     "en_cours": "En cours",
     "injoignable": "Injoignable",
     "en_retard": "En retard",
-    "fermé": "Fermé"
+    "fermé": "Fermé",
+    "optimisation": "Optimisation",
+    "matériel": "Matériel",
+    "équipe_installation": "Équipe installation",
+    "installé": "Installé",
+    "annulé": "Annulé",
+    "installation_impossible": "Installation impossible",
+    "extension": "Extension"
   },
   "subscriptionTypes": {
     "SAWI": "SAWI",

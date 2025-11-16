@@ -3,7 +3,6 @@ import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
   LayoutDashboard,
-  Ticket,
   PlusCircle,
   LogOut,
   Menu,
@@ -12,8 +11,7 @@ import {
   Shield,
   History,
   ChevronDown,
-  ChevronUp,
-  Wrench
+  ChevronUp
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
@@ -25,6 +23,7 @@ export default function Layout({ children }) {
   const [adminMenuOpen, setAdminMenuOpen] = useState(false)
   const [user, setUser] = useState(null)
   const [userRole, setUserRole] = useState(null)
+  const [uiMode, setUiMode] = useState(() => localStorage.getItem('uiMode') || 'reclamation')
 
   // Get user info and role
   useEffect(() => {
@@ -82,11 +81,21 @@ export default function Layout({ children }) {
     document.documentElement.dir = lng === 'ar' ? 'rtl' : 'ltr'
   }
 
+  const setMode = (mode) => {
+    setUiMode(mode)
+    try { localStorage.setItem('uiMode', mode) } catch (e) { void e }
+    if (mode === 'installation') {
+      navigate('/installation')
+    } else {
+      navigate('/reclamation')
+    }
+  }
+
+  const newTicketPath = uiMode === 'installation' ? '/tickets/new?category=installation' : '/tickets/new?category=reclamation'
+  const dashboardPath = uiMode === 'installation' ? '/installation' : '/reclamation'
   const navItems = [
-    { path: '/', icon: LayoutDashboard, label: t('nav.dashboard') },
-    { path: '/reclamation', icon: Ticket, label: t('nav.tickets') },
-    { path: '/installation', icon: Wrench, label: t('nav.installation') || 'Installation' },
-    { path: '/tickets/new', icon: PlusCircle, label: t('nav.newTicket') },
+    { path: dashboardPath, icon: LayoutDashboard, label: t('nav.dashboard') },
+    { path: newTicketPath, icon: PlusCircle, label: t('nav.newTicket') },
   ]
 
   // Admin menu items
@@ -132,6 +141,21 @@ export default function Layout({ children }) {
                   <span>{item.label}</span>
                 </Link>
               ))}
+
+              <div className="ml-2 flex items-center bg-primary-dark/60 rounded-md">
+                <button
+                  onClick={() => setMode('reclamation')}
+                  className={`px-3 py-2 text-sm ${uiMode==='reclamation'?'bg-white text-primary rounded-md':'text-white'}`}
+                >
+                  Réclamations
+                </button>
+                <button
+                  onClick={() => setMode('installation')}
+                  className={`px-3 py-2 text-sm ${uiMode==='installation'?'bg-white text-primary rounded-md':'text-white'}`}
+                >
+                  Installation
+                </button>
+              </div>
 
               {/* Admin Dropdown Menu */}
               {userRole === 'admin' && (
@@ -224,6 +248,21 @@ export default function Layout({ children }) {
                   <span>{item.label}</span>
                 </Link>
               ))}
+
+              <div className="flex items-center gap-2 px-3 pt-2">
+                <button
+                  onClick={() => { setMode('reclamation'); setMobileMenuOpen(false) }}
+                  className={`flex-1 px-3 py-2 rounded-md ${uiMode==='reclamation'?'bg-white text-primary':'bg-primary-dark/50 text-white'}`}
+                >
+                  Réclamations
+                </button>
+                <button
+                  onClick={() => { setMode('installation'); setMobileMenuOpen(false) }}
+                  className={`flex-1 px-3 py-2 rounded-md ${uiMode==='installation'?'bg-white text-primary':'bg-primary-dark/50 text-white'}`}
+                >
+                  Installation
+                </button>
+              </div>
 
               {/* Admin Menu for Mobile */}
               {userRole === 'admin' && (

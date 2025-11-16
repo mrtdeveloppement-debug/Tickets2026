@@ -59,7 +59,14 @@
     "en_cours": "In Progress",
     "injoignable": "Unreachable",
     "en_retard": "Late",
-    "fermé": "Closed"
+    "fermé": "Closed",
+    "optimisation": "Optimization",
+    "matériel": "Material",
+    "équipe_installation": "Installation Team",
+    "installé": "Installed",
+    "annulé": "Cancelled",
+    "installation_impossible": "Installation Impossible",
+    "extension": "Extension"
   },
   "subscriptionTypes": {
     "SAWI": "SAWI",
@@ -145,4 +152,3 @@
     "updating": "Updating..."
   }
 }
-
