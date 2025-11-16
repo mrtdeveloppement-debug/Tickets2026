@@ -66,7 +66,8 @@
     "installé": "Installed",
     "annulé": "Cancelled",
     "installation_impossible": "Installation Impossible",
-    "extension": "Extension"
+    "extension": "Extension",
+    "manque_de_materiel": "Lack of material"
   },
   "subscriptionTypes": {
     "SAWI": "SAWI",

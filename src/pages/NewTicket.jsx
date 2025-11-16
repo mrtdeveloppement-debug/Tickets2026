@@ -103,28 +103,14 @@ export default function NewTicket() {
   }
 
   const checkDuplicateTicket = async () => {
-    const { data: openBySubscriber, error: errSub } = await supabase
+    const dab = (formData.subscriber_number || '').trim()
+    const { data, error } = await supabase
       .from('tickets')
       .select('id')
-      .eq('subscriber_number', formData.subscriber_number)
+      .ilike('subscriber_number', dab)
       .neq('status', 'fermé')
-
-    if (errSub) throw errSub
-    if ((openBySubscriber || []).length > 0) {
-      return { ok: false, reason: 'subscriber' }
-    }
-
-    const { data: openByPhone, error: errPhone } = await supabase
-      .from('tickets')
-      .select('id')
-      .eq('phone', formData.phone)
-      .neq('status', 'fermé')
-
-    if (errPhone) throw errPhone
-    if ((openByPhone || []).length >= 2) {
-      return { ok: false, reason: 'phone' }
-    }
-
+    if (error) throw error
+    if ((data || []).length > 0) return { ok: false, reason: 'subscriber' }
     return { ok: true }
   }
 
@@ -147,11 +133,7 @@ export default function NewTicket() {
       // Check for duplicate open ticket
       const dup = await checkDuplicateTicket()
       if (!dup.ok) {
-        if (dup.reason === 'subscriber') {
-          alert(t('ticket.duplicateError'))
-        } else if (dup.reason === 'phone') {
-          alert('Limite: maximum 2 tickets ouverts pour le même téléphone')
-        }
+        alert(t('ticket.duplicateError'))
         setLoading(false)
         return
       }
@@ -202,6 +184,12 @@ export default function NewTicket() {
         ticket = res.data
         error = res.error
         if (error) throw error
+        if (category === 'installation' && ticket) {
+          await supabase
+            .from('tickets')
+            .update({ category: 'installation', installation_status: 'matériel', updated_at: new Date().toISOString() })
+            .eq('id', ticket.id)
+        }
       }
 
       // Add to history

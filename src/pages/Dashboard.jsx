@@ -71,6 +71,7 @@ export default function Dashboard() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const [searchInput, setSearchInput] = useState('')
+  const [timeRange, setTimeRange] = useState('all')
   const [stats, setStats] = useState({
     total: 0,
     open: 0,
@@ -101,28 +102,39 @@ export default function Dashboard() {
 
   useEffect(() => {
     loadDashboardData()
-  }, [])
+  }, [timeRange])
 
   const loadDashboardData = async () => {
     try {
-      // Get all tickets
-      const { data: tickets, error } = await supabase
+      const now = new Date()
+      const from = new Date(now)
+      if (timeRange === 'day') from.setDate(now.getDate() - 1)
+      else if (timeRange === 'month') from.setMonth(now.getMonth() - 1)
+      else if (timeRange === 'year') from.setFullYear(now.getFullYear() - 1)
+      const fromIso = from.toISOString()
+      let query = supabase
         .from('tickets')
         .select('*, wilayas(name_fr), regions(name_fr)')
-        .or('category.is.null,category.eq.reclamation')
         .order('created_at', { ascending: false })
+      if (timeRange !== 'all') {
+        query = query.gte('created_at', fromIso)
+      }
+      const { data: tickets, error } = await query
 
       if (error) throw error
 
+      // Focus on Réclamations only
+      const recTickets = (tickets || []).filter(t => !t.category || t.category === 'reclamation')
+
       // Calculate stats
-      const total = tickets.length
-      const open = tickets.filter(t => t.status !== 'fermé').length
-      const closed = tickets.filter(t => t.status === 'fermé').length
-      const late = tickets.filter(t => t.status === 'en_retard').length
-      const assigned = tickets.filter(t => t.status === 'assigné').length
-      const payment = tickets.filter(t => t.status === 'paiement').length
-      const inProgress = tickets.filter(t => t.status === 'en_cours').length
-      const unreachable = tickets.filter(t => t.status === 'injoignable').length
+      const total = recTickets.length
+      const open = recTickets.filter(t => t.status !== 'fermé').length
+      const closed = recTickets.filter(t => t.status === 'fermé').length
+      const late = recTickets.filter(t => t.status === 'en_retard').length
+      const assigned = recTickets.filter(t => t.status === 'assigné').length
+      const payment = recTickets.filter(t => t.status === 'paiement').length
+      const inProgress = recTickets.filter(t => t.status === 'en_cours').length
+      const unreachable = recTickets.filter(t => t.status === 'injoignable').length
 
       setStats({ total, open, closed, late, assigned, payment, inProgress, unreachable })
 
@@ -130,7 +142,7 @@ export default function Dashboard() {
       await loadOverdueCount()
 
       // Group by wilaya
-      const wilayaGroups = tickets.reduce((acc, ticket) => {
+      const wilayaGroups = recTickets.reduce((acc, ticket) => {
         const wilaya = ticket.wilayas?.name_fr || ticket.wilaya_code
         acc[wilaya] = (acc[wilaya] || 0) + 1
         return acc
@@ -138,7 +150,7 @@ export default function Dashboard() {
       setWilayaData(Object.entries(wilayaGroups))
 
       // Group by region (Nouakchott only) — accept both 'NKC' and '15'
-      const nkcTickets = tickets.filter(t => t.wilaya_code === 'NKC' || t.wilaya_code === '15')
+      const nkcTickets = recTickets.filter(t => t.wilaya_code === 'NKC' || t.wilaya_code === '15')
       const regionGroups = nkcTickets.reduce((acc, ticket) => {
         const region = ticket.regions?.name_fr || 'Non spécifié'
         acc[region] = (acc[region] || 0) + 1
@@ -147,18 +159,18 @@ export default function Dashboard() {
       setRegionData(Object.entries(regionGroups))
 
       // Group by service
-      const serviceGroups = tickets.reduce((acc, ticket) => {
+      const serviceGroups = recTickets.reduce((acc, ticket) => {
         acc[ticket.subscription_type] = (acc[ticket.subscription_type] || 0) + 1
         return acc
       }, {})
       setServiceData(Object.entries(serviceGroups))
 
       // Recent tickets
-      setRecentTickets(tickets.slice(0, 5))
+      setRecentTickets(recTickets.slice(0, 5))
 
       // ========== NEW CHARTS FOR OPEN TICKETS ==========
       // Filter for open tickets only (not closed)
-      const openTicketsOnly = tickets.filter(t => t.status !== 'fermé')
+      const openTicketsOnly = recTickets.filter(t => t.status !== 'fermé')
       setOpenTickets(openTicketsOnly)
 
       // Chart 1: General situation by service and delay (open tickets)
@@ -396,35 +408,39 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard Réclamations</h1>
-        <Link to="/tickets" className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-dark">Voir les réclamations</Link>
-      </div>
-      <div className="flex justify-end">
-        <div className="relative w-full max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-          <input
-            type="text"
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/tickets?q=${encodeURIComponent(searchInput)}`) }}
-            placeholder={t('ticket.search')}
-            className="w-full pl-10 pr-10 py-3 rounded-full bg-white shadow border border-gray-200 focus:ring-2 focus:ring-primary focus:outline-none"
-          />
-          {searchInput && (
-            <button
-              onClick={() => setSearchInput('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-            >
-              <X size={18} />
-            </button>
-          )}
+        <div className="flex items-center gap-2">
+          <button onClick={() => setTimeRange('day')} className={`px-3 py-1 rounded-full border ${timeRange==='day'?'bg-primary text-white border-primary':'bg-white text-gray-700 border-gray-300'}`}>Jours</button>
+          <button onClick={() => setTimeRange('month')} className={`px-3 py-1 rounded-full border ${timeRange==='month'?'bg-primary text-white border-primary':'bg-white text-gray-700 border-gray-300'}`}>Mois</button>
+          <button onClick={() => setTimeRange('year')} className={`px-3 py-1 rounded-full border ${timeRange==='year'?'bg-primary text-white border-primary':'bg-white text-gray-700 border-gray-300'}`}>Année</button>
+          <button onClick={() => setTimeRange('all')} className={`px-3 py-1 rounded-full border ${timeRange==='all'?'bg-primary text-white border-primary':'bg-white text-gray-700 border-gray-300'}`}>Voir tout</button>
         </div>
-        <button
-          onClick={() => navigate(`/tickets?q=${encodeURIComponent(searchInput)}`)}
-          className="ml-3 px-4 py-2 rounded-full bg-primary text-white hover:bg-primary-dark"
-        >
-          Rechercher
-        </button>
+        <div className="flex items-center gap-3">
+          <div className="relative w-full max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+            <input
+              type="text"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/tickets?q=${encodeURIComponent(searchInput)}`) }}
+              placeholder={t('ticket.search')}
+              className="w-full pl-10 pr-10 py-3 rounded-full bg-white shadow border border-gray-200 focus:ring-2 focus:ring-primary focus:outline-none"
+            />
+            {searchInput && (
+              <button
+                onClick={() => setSearchInput('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <X size={18} />
+              </button>
+            )}
+          </div>
+          <button
+            onClick={() => navigate(`/tickets?q=${encodeURIComponent(searchInput)}`)}
+            className="px-4 py-2 rounded-full bg-primary text-white hover:bg-primary-dark"
+          >
+            Rechercher
+          </button>
+        </div>
       </div>
       
 

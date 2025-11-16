@@ -21,6 +21,13 @@ export default function TicketList() {
 
   const filterTickets = useCallback(() => {
     let filtered = tickets
+    const norm = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '_')
+
+    if (category === 'installation') {
+      filtered = filtered.filter(t => t.category === 'installation' || !!t.installation_status)
+    } else if (category === 'reclamation') {
+      filtered = filtered.filter(t => !t.category || t.category === 'reclamation')
+    }
 
     if (searchTerm) {
       filtered = filtered.filter(ticket =>
@@ -32,7 +39,11 @@ export default function TicketList() {
     }
 
     if (statusFilter !== 'all') {
-      filtered = filtered.filter(ticket => (category === 'installation' ? (ticket.installation_status || '').toLowerCase() === statusFilter : ticket.status === statusFilter))
+      filtered = filtered.filter(ticket => (
+        category === 'installation'
+          ? norm(ticket.installation_status && String(ticket.installation_status).trim() !== '' ? ticket.installation_status : 'matériel') === norm(statusFilter)
+          : ticket.status === statusFilter
+      ))
     }
 
     setFilteredTickets(filtered)
@@ -50,7 +61,7 @@ export default function TicketList() {
     const installStatus = params.get('install_status')
     if (status) setStatusFilter(status)
     if (q) setSearchTerm(q)
-    if (cat === 'installation' || cat === 'reclamation') setCategory(cat)
+    if (cat === 'installation' || cat === 'reclamation' || cat === 'all') setCategory(cat || 'reclamation')
     if (installStatus && cat === 'installation') setStatusFilter(installStatus)
   }, [location.search])
 
@@ -59,7 +70,6 @@ export default function TicketList() {
       const { data, error } = await supabase
         .from('tickets')
         .select('*, wilayas(name_fr, name_ar, name_en), regions(name_fr, name_ar, name_en)')
-        .or(category === 'installation' ? 'category.eq.installation,installation_status.not.is.null' : 'category.is.null,category.eq.reclamation')
         .order('created_at', { ascending: false })
 
       if (error) throw error
@@ -107,7 +117,7 @@ export default function TicketList() {
   }
 
   const statuses = category === 'installation'
-    ? ['matériel', 'équipe_installation', 'installé', 'annulé', 'injoignable', 'installation_impossible', 'optimisation', 'extension']
+    ? ['matériel', 'équipe_installation', 'installé', 'annulé', 'injoignable', 'installation_impossible', 'optimisation', 'extension', 'manque_de_materiel']
     : ['nouveau', 'assigné', 'paiement', 'en_cours', 'injoignable', 'en_retard', 'fermé', 'optimisation']
 
   if (loading) {
@@ -294,7 +304,7 @@ export default function TicketList() {
                   <td className="px-6 py-4 whitespace-nowrap">
                     {category === 'installation' ? (
                       <span className="px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">
-                        {ticket.installation_status || '-'}
+                        {ticket.installation_status && String(ticket.installation_status).trim() !== '' ? ticket.installation_status : 'Matériel'}
                       </span>
                     ) : (
                       <select

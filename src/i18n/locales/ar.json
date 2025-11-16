@@ -67,7 +67,8 @@
     "installé": "مركب",
     "annulé": "ملغى",
     "installation_impossible": "تركيب غير ممكن",
-    "extension": "تمديد"
+    "extension": "تمديد",
+    "manque_de_materiel": "نقص المواد"
   },
   "subscriptionTypes": {
     "SAWI": "SAWI",
