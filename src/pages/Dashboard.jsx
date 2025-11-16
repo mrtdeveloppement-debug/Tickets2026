@@ -412,14 +412,6 @@ export default function Dashboard() {
               {t('dashboard.overdueTicketsDesc')}: {overdueCount}
             </p>
           </div>
-          <button
-            onClick={handleUpdateOverdueTickets}
-            disabled={updatingOverdue}
-            className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg transition-colors flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <RefreshCw size={16} className={updatingOverdue ? 'animate-spin' : ''} />
-            <span>{updatingOverdue ? t('common.updating') : t('dashboard.updateNow')}</span>
-          </button>
         </div>
         <div className="mt-4 p-4 bg-red-50 rounded-lg">
           <p className="text-sm text-red-700">
