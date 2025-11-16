@@ -13,6 +13,7 @@ export default function TicketList() {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [category, setCategory] = useState('reclamation')
+  const [overdueFilter, setOverdueFilter] = useState(null)
   const location = useLocation()
 
   useEffect(() => {
@@ -48,13 +49,22 @@ export default function TicketList() {
     if (statusFilter !== 'all') {
       filtered = filtered.filter(ticket => (
         category === 'installation'
-          ? norm(ticket.installation_status && String(ticket.installation_status).trim() !== '' ? ticket.installation_status : 'matériel') === norm(statusFilter)
+          ? norm(getInstallationStatus(ticket)) === norm(statusFilter)
           : ticket.status === statusFilter
       ))
     }
 
+    if (category === 'installation' && overdueFilter === '48') {
+      filtered = filtered.filter(ticket => {
+        const createdDate = new Date(ticket.created_at)
+        const hours = Math.floor((new Date() - createdDate) / (1000 * 60 * 60))
+        const inst = getInstallationStatus(ticket)
+        return hours >= 48 && (inst === 'matériel' || inst === 'équipe_installation' || inst === 'optimisation' || inst === 'extension')
+      })
+    }
+
     setFilteredTickets(filtered)
-  }, [tickets, searchTerm, statusFilter, category])
+  }, [tickets, searchTerm, statusFilter, category, overdueFilter])
 
   useEffect(() => {
     filterTickets()
@@ -66,10 +76,12 @@ export default function TicketList() {
     const q = params.get('q')
     const cat = params.get('category')
     const installStatus = params.get('install_status')
+    const overdue = params.get('overdue')
     if (status) setStatusFilter(status)
     if (q) setSearchTerm(q)
     if (cat === 'installation' || cat === 'reclamation' || cat === 'all') setCategory(cat || 'reclamation')
     if (installStatus && cat === 'installation') setStatusFilter(installStatus)
+    if (overdue && cat === 'installation') setOverdueFilter(overdue)
   }, [location.search])
 
   const loadTickets = async () => {
@@ -88,7 +100,50 @@ export default function TicketList() {
     }
   }
 
-  
+  const INSTALLATION_STATUSES = ['matériel','équipe_installation','installé','annulé','injoignable','installation_impossible','optimisation']
+
+  const mapInstallToAllowedStatus = (installStatus) => {
+    switch (String(installStatus)) {
+      case 'matériel':
+        return 'assigné'
+      case 'équipe_installation':
+        return 'en_cours'
+      case 'installé':
+      case 'annulé':
+      case 'installation_impossible':
+        return 'fermé'
+      case 'optimisation':
+        return 'optimisation'
+      case 'injoignable':
+        return 'injoignable'
+      default:
+        return 'assigné'
+    }
+  }
+
+  const mapAllowedToInstallStatus = (status) => {
+    switch (String(status)) {
+      case 'assigné':
+        return 'matériel'
+      case 'en_cours':
+        return 'équipe_installation'
+      case 'fermé':
+        return 'installé'
+      case 'optimisation':
+        return 'optimisation'
+      case 'injoignable':
+        return 'injoignable'
+      default:
+        return 'matériel'
+    }
+  }
+
+  const getInstallationStatus = (ticket) => {
+    const raw = ticket.installation_status
+    const has = raw && String(raw).trim() !== ''
+    if (has) return String(raw)
+    return mapAllowedToInstallStatus(ticket.status || '')
+  }
 
   const updateTicketStatus = async (ticketId, newStatus) => {
     try {
@@ -123,8 +178,59 @@ export default function TicketList() {
     }
   }
 
+  const updateInstallationStatus = async (ticketId, newStatus) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      const actorName = user?.user_metadata?.full_name || user?.email || 'Utilisateur'
+      let error
+      try {
+        const res = await supabase
+          .from('tickets')
+          .update({ 
+            installation_status: newStatus,
+            status: mapInstallToAllowedStatus(newStatus),
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', ticketId)
+        error = res.error
+      } catch (e) {
+        error = e
+      }
+
+      if (error) {
+        const msg = String(error.message || '')
+        if (msg.includes('installation_status') || msg.includes('schema cache')) {
+          const { error: fbErr } = await supabase
+            .from('tickets')
+            .update({ 
+              status: mapInstallToAllowedStatus(newStatus),
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', ticketId)
+          if (fbErr) throw fbErr
+        } else {
+          throw error
+        }
+      }
+
+      await supabase.from('ticket_history').insert({
+        ticket_id: ticketId,
+        action: 'installation_status_change',
+        to_status: newStatus,
+        changed_by: user?.id || null,
+        changed_by_name: actorName,
+        created_at: new Date().toISOString()
+      })
+
+      loadTickets()
+    } catch (error) {
+      console.error('Error updating installation status:', error)
+      alert(t('common.error'))
+    }
+  }
+
   const statuses = category === 'installation'
-    ? ['matériel', 'équipe_installation', 'installé', 'annulé', 'injoignable', 'installation_impossible', 'optimisation', 'extension', 'manque_de_materiel']
+    ? ['matériel', 'équipe_installation', 'installé', 'annulé', 'injoignable', 'installation_impossible', 'optimisation']
     : ['nouveau', 'assigné', 'paiement', 'en_cours', 'injoignable', 'en_retard', 'fermé', 'optimisation']
 
   if (loading) {
@@ -290,8 +396,10 @@ export default function TicketList() {
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-primary">
                     {ticket.ticket_number}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {ticket.subscriber_number}
+                  <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    <Link to={`/tickets/${ticket.id}`} className="text-primary hover:text-primary-dark">
+                      {ticket.subscriber_number}
+                    </Link>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {ticket.phone}
@@ -309,11 +417,17 @@ export default function TicketList() {
                     {ticket.subscription_type}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    {category === 'installation' ? (
-                      <span className="px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">
-                        {ticket.installation_status && String(ticket.installation_status).trim() !== '' ? ticket.installation_status : 'Matériel'}
-                      </span>
-                    ) : (
+                  {category === 'installation' ? (
+                    <select
+                      value={getInstallationStatus(ticket)}
+                      onChange={(e) => updateInstallationStatus(ticket.id, e.target.value)}
+                      className={"px-2 py-1 text-xs font-semibold rounded-full border-0 cursor-pointer bg-gray-100 text-gray-800"}
+                    >
+                      {INSTALLATION_STATUSES.map(status => (
+                        <option key={status} value={status}>{status}</option>
+                      ))}
+                    </select>
+                  ) : (
                       <select
                         value={ticket.status}
                         onChange={(e) => updateTicketStatus(ticket.id, e.target.value)}

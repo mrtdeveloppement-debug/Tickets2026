@@ -12,7 +12,7 @@ import {
   Legend,
 } from 'chart.js'
 import { supabase } from '../lib/supabase'
-import { Wrench, Users, CheckCircle2, XCircle, PhoneOff, Ban, Settings, Search, X, GitBranch, PackageOpen } from 'lucide-react'
+import { Wrench, Users, CheckCircle2, XCircle, PhoneOff, Ban, Settings, Search, X, GitBranch, PackageOpen, Clock } from 'lucide-react'
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend)
 
@@ -37,6 +37,11 @@ export default function InstallationDashboard() {
   const selectStatus = (status) => {
     setSelectedStatus(prev => (prev === status ? '' : status))
     navigate(`/tickets?category=installation&install_status=${encodeURIComponent(status)}`)
+    if (ticketsRef.current) ticketsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+  const selectOverdue = () => {
+    setSelectedStatus('')
+    navigate(`/tickets?category=installation&overdue=48`)
     if (ticketsRef.current) ticketsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
@@ -137,10 +142,20 @@ export default function InstallationDashboard() {
         setStatusCounts(counts)
 
         const lateByDaysCount = {}
+        let overdue48Count = 0
         openTickets.forEach(ticket => {
           const createdDate = new Date(ticket.created_at)
           const days = Math.floor((new Date() - createdDate) / (1000 * 60 * 60 * 24))
           lateByDaysCount[days] = (lateByDaysCount[days] || 0) + 1
+          const hours = Math.floor((new Date() - createdDate) / (1000 * 60 * 60))
+          if (hours >= 48 && (
+            ticket.installation_status === 'matériel' ||
+            ticket.installation_status === 'équipe_installation' ||
+            ticket.installation_status === 'optimisation' ||
+            ticket.installation_status === 'extension'
+          )) {
+            overdue48Count++
+          }
         })
         const lateDaysArr = Object.entries(lateByDaysCount)
           .map(([d, c]) => [Number(d), c])
@@ -165,6 +180,7 @@ export default function InstallationDashboard() {
           }
         })
         setLateSawiByRegion(Object.entries(lateSawiRegionGroups))
+        setStatusCounts(prev => ({ ...prev, overdue48: overdue48Count }))
 
         const now = Date.now()
         for (const t of allInstallation) {
@@ -255,7 +271,7 @@ export default function InstallationDashboard() {
         </div>
       </div>
 
-      {/* Statuts Installation - 7 icônes */}
+      {/* Statuts Installation - 7 icônes + En retard ≥48h */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between cursor-pointer" onClick={() => selectStatus('matériel')}>
           <div>
@@ -273,6 +289,15 @@ export default function InstallationDashboard() {
           </div>
           <button className={`p-3 bg-indigo-600 rounded-lg flex items-center justify-center ${selectedStatus==='équipe_installation'?'ring-2 ring-indigo-400':''}`}>
             <Users className="text-white" size={24} />
+          </button>
+        </div>
+        <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between cursor-pointer" onClick={selectOverdue}>
+          <div>
+            <div className="text-sm text-gray-500">En retard (≥48h)</div>
+            <div className="text-2xl font-bold">{getCount('overdue48')}</div>
+          </div>
+          <button className={`p-3 bg-red-600 rounded-lg flex items-center justify-center`}>
+            <Clock className="text-white" size={24} />
           </button>
         </div>
         <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between cursor-pointer" onClick={() => selectStatus('installé')}>

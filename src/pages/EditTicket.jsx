@@ -14,6 +14,7 @@ export default function EditTicket() {
   const [regions, setRegions] = useState([])
   const [complaintTypes, setComplaintTypes] = useState([])
   const [errors, setErrors] = useState({})
+  const [category, setCategory] = useState('reclamation')
 
   const [formData, setFormData] = useState({
     subscriber_number: '',
@@ -24,7 +25,8 @@ export default function EditTicket() {
     subscription_type: '',
     complaint_type: '',
     problem_description: '',
-    status: 'ouvert'
+    status: 'ouvert',
+    installation_status: ''
   })
 
   useEffect(() => {
@@ -66,8 +68,11 @@ export default function EditTicket() {
         subscription_type: data.subscription_type || '',
         complaint_type: data.complaint_type || '',
         problem_description: data.problem_description || '',
-        status: data.status || 'ouvert'
+        status: data.status || 'ouvert',
+        installation_status: (data.installation_status && String(data.installation_status).trim() !== '') ? data.installation_status : 'matériel'
       })
+      const cat = data.category || (data.complaint_type ? 'reclamation' : 'installation')
+      setCategory(cat)
     } catch (err) {
       console.error('Error loading ticket:', err)
       alert('Erreur lors du chargement de la tâche')
@@ -133,7 +138,8 @@ export default function EditTicket() {
     // Required fields
     if (!formData.wilaya_code) newErrors.wilaya_code = t('validation.required')
     if (!formData.subscription_type) newErrors.subscription_type = t('validation.required')
-    if (!formData.complaint_type) newErrors.complaint_type = t('validation.required')
+    if (category === 'reclamation' && !formData.complaint_type) newErrors.complaint_type = t('validation.required')
+    if (category === 'installation' && !formData.installation_status) newErrors.installation_status = t('validation.required')
     // Problem description now optional
 
     // Region required for Nouakchott
@@ -155,23 +161,88 @@ export default function EditTicket() {
     setLoading(true)
 
     try {
-      const { error } = await supabase
-        .from('tickets')
-        .update({
-          subscriber_number: formData.subscriber_number,
-          phone: formData.phone,
-          client_name: formData.client_name || null,
-          wilaya_code: formData.wilaya_code,
-          region_id: formData.region_id || null,
-          subscription_type: formData.subscription_type,
-          complaint_type: formData.complaint_type,
-          problem_description: formData.problem_description,
-          status: formData.status,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', id)
+      const payload = {
+        subscriber_number: formData.subscriber_number,
+        phone: formData.phone,
+        client_name: formData.client_name || null,
+        wilaya_code: formData.wilaya_code,
+        region_id: formData.region_id || null,
+        subscription_type: formData.subscription_type,
+        updated_at: new Date().toISOString()
+      }
 
-      if (error) throw error
+      if (category === 'reclamation') {
+        payload.complaint_type = formData.complaint_type
+        payload.problem_description = formData.problem_description
+        payload.status = formData.status
+      } else {
+        payload.installation_status = formData.installation_status || 'matériel'
+        const mapInstallToAllowedStatus = (installStatus) => {
+          switch (String(installStatus)) {
+            case 'matériel':
+              return 'assigné'
+            case 'équipe_installation':
+              return 'en_cours'
+            case 'installé':
+            case 'annulé':
+            case 'installation_impossible':
+              return 'fermé'
+            case 'optimisation':
+              return 'optimisation'
+            case 'injoignable':
+              return 'injoignable'
+            default:
+              return 'assigné'
+          }
+        }
+        payload.status = mapInstallToAllowedStatus(payload.installation_status)
+      }
+
+      let error
+      try {
+        const res = await supabase
+          .from('tickets')
+          .update(payload)
+          .eq('id', id)
+        error = res.error
+      } catch (e) {
+        error = e
+      }
+
+      if (error) {
+        const msg = String(error.message || '')
+        if (category === 'installation' && (msg.includes('installation_status') || msg.includes('schema cache'))) {
+          const mapInstallToAllowedStatus = (installStatus) => {
+            switch (String(installStatus)) {
+              case 'matériel':
+                return 'assigné'
+              case 'équipe_installation':
+                return 'en_cours'
+              case 'installé':
+              case 'annulé':
+              case 'installation_impossible':
+                return 'fermé'
+              case 'optimisation':
+                return 'optimisation'
+              case 'injoignable':
+                return 'injoignable'
+              default:
+                return 'assigné'
+            }
+          }
+          const fallback = {
+            status: mapInstallToAllowedStatus(formData.installation_status || 'matériel'),
+            updated_at: new Date().toISOString()
+          }
+          const { error: fbErr } = await supabase
+            .from('tickets')
+            .update(fallback)
+            .eq('id', id)
+          if (fbErr) throw fbErr
+        } else {
+          throw error
+        }
+      }
 
       alert('Ticket modifié avec succès!')
       navigate(`/tickets/${id}`)
@@ -263,23 +334,25 @@ export default function EditTicket() {
             />
           </div>
 
-          {/* Status */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              {t('ticket.status')} *
-            </label>
-            <select
-              name="status"
-              value={formData.status}
-              onChange={handleChange}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
-            >
-              <option value="ouvert">Ouvert</option>
-              <option value="en_cours">En cours</option>
-              <option value="en_retard">En retard</option>
-              <option value="fermé">Fermé</option>
-            </select>
-          </div>
+          {/* Status global (Réclamation uniquement) */}
+          {category === 'reclamation' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                {t('ticket.status')} *
+              </label>
+              <select
+                name="status"
+                value={formData.status}
+                onChange={handleChange}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+              >
+                <option value="ouvert">Ouvert</option>
+                <option value="en_cours">En cours</option>
+                <option value="en_retard">En retard</option>
+                <option value="fermé">Fermé</option>
+              </select>
+            </div>
+          )}
 
           {/* Wilaya */}
           <div>
@@ -360,55 +433,83 @@ export default function EditTicket() {
             )}
           </div>
 
-          {/* Complaint Type */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              {t('ticket.complaintType')} *
-            </label>
-            <select
-              name="complaint_type"
-              value={formData.complaint_type}
-              onChange={handleChange}
-              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent ${
-                errors.complaint_type ? 'border-red-500' : 'border-gray-300'
-              }`}
-            >
-              <option value="">-- {t('ticket.complaintType')} --</option>
-              {complaintTypes
-                .filter(ct => {
-                  if (!formData.subscription_type) return true
-                  return ct.applicable_to && ct.applicable_to.includes(formData.subscription_type)
-                })
-                .map(type => (
-                  <option key={type.code} value={type.code}>
-                    {i18n.language === 'ar' ? type.name_ar : i18n.language === 'en' ? type.name_en : type.name_fr}
-                  </option>
-                ))}
-            </select>
-            {errors.complaint_type && (
-              <p className="mt-1 text-sm text-red-600">{errors.complaint_type}</p>
-            )}
-          </div>
-        </div>
+          {/* Complaint Type (Réclamation uniquement) */}
+          {category === 'reclamation' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                {t('ticket.complaintType')} *
+              </label>
+              <select
+                name="complaint_type"
+                value={formData.complaint_type}
+                onChange={handleChange}
+                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent ${
+                  errors.complaint_type ? 'border-red-500' : 'border-gray-300'
+                }`}
+              >
+                <option value="">-- {t('ticket.complaintType')} --</option>
+                {complaintTypes
+                  .filter(ct => {
+                    if (!formData.subscription_type) return true
+                    return ct.applicable_to && ct.applicable_to.includes(formData.subscription_type)
+                  })
+                  .map(type => (
+                    <option key={type.code} value={type.code}>
+                      {i18n.language === 'ar' ? type.name_ar : i18n.language === 'en' ? type.name_en : type.name_fr}
+                    </option>
+                  ))}
+              </select>
+              {errors.complaint_type && (
+                <p className="mt-1 text-sm text-red-600">{errors.complaint_type}</p>
+              )}
+            </div>
+          )}
 
-        {/* Problem Description */}
-        <div className="mt-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            {t('ticket.problemDescription')}
-          </label>
-          <textarea
-            name="problem_description"
-            value={formData.problem_description}
-            onChange={handleChange}
-            rows={4}
-            className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent ${
-              errors.problem_description ? 'border-red-500' : 'border-gray-300'
-            }`}
-          />
-          {errors.problem_description && (
-            <p className="mt-1 text-sm text-red-600">{errors.problem_description}</p>
+          {/* Installation Status (Installation uniquement) */}
+          {category === 'installation' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Statut installation
+              </label>
+              <select
+                name="installation_status"
+                value={formData.installation_status}
+                onChange={handleChange}
+                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent ${
+                  errors.installation_status ? 'border-red-500' : 'border-gray-300'
+                }`}
+              >
+                {['matériel','équipe_installation','installé','annulé','injoignable','installation_impossible','optimisation','extension','manque_de_materiel'].map(s => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+              {errors.installation_status && (
+                <p className="mt-1 text-sm text-red-600">{errors.installation_status}</p>
+              )}
+            </div>
           )}
         </div>
+
+        {/* Problem Description (Réclamation uniquement) */}
+        {category === 'reclamation' && (
+          <div className="mt-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              {t('ticket.problemDescription')}
+            </label>
+            <textarea
+              name="problem_description"
+              value={formData.problem_description}
+              onChange={handleChange}
+              rows={4}
+              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent ${
+                errors.problem_description ? 'border-red-500' : 'border-gray-300'
+              }`}
+            />
+            {errors.problem_description && (
+              <p className="mt-1 text-sm text-red-600">{errors.problem_description}</p>
+            )}
+          </div>
+        )}
 
         {/* Actions */}
         <div className="mt-6 flex gap-4">

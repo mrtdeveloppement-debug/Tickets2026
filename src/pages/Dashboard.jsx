@@ -11,7 +11,8 @@ import {
   TrendingUp,
   RefreshCw,
   Search,
-  X
+  X,
+  Settings
 } from 'lucide-react'
 import {
   Chart as ChartJS,
@@ -80,7 +81,8 @@ export default function Dashboard() {
     assigned: 0,
     payment: 0,
     inProgress: 0,
-    unreachable: 0
+    unreachable: 0,
+    optimisation: 0
   })
   const [wilayaData, setWilayaData] = useState([])
   const [regionData, setRegionData] = useState([])
@@ -137,8 +139,9 @@ export default function Dashboard() {
       const payment = recTickets.filter(t => t.status === 'paiement').length
       const inProgress = recTickets.filter(t => t.status === 'en_cours').length
       const unreachable = recTickets.filter(t => t.status === 'injoignable').length
+      const optimisation = recTickets.filter(t => t.status === 'optimisation').length
 
-      setStats({ total, open, closed, late, assigned, payment, inProgress, unreachable })
+      setStats({ total, open, closed, late, assigned, payment, inProgress, unreachable, optimisation })
 
       // Load overdue tickets count
       await loadOverdueCount()
@@ -360,6 +363,13 @@ export default function Dashboard() {
       icon: AlertCircle, 
       color: 'bg-purple-500',
       statusParam: 'injoignable'
+    },
+    { 
+      label: t('status.optimisation'), 
+      value: stats.optimisation, 
+      icon: Settings, 
+      color: 'bg-purple-600',
+      statusParam: 'optimisation'
     },
   ]
 
