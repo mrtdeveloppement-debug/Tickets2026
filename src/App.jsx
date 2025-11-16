@@ -4,6 +4,8 @@ import { supabase } from './lib/supabase'
 import Layout from './components/Layout'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
+import ModeSelector from './pages/ModeSelector'
+import InstallationDashboard from './pages/InstallationDashboard'
 import TicketList from './pages/TicketList'
 import TicketDetails from './pages/TicketDetails'
 import EditTicket from './pages/EditTicket'
@@ -57,7 +59,23 @@ function App() {
           path="/"
           element={
             <ProtectedRoute>
+              <ModeSelector />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reclamation"
+          element={
+            <ProtectedRoute>
               <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/installation"
+          element={
+            <ProtectedRoute>
+              <InstallationDashboard />
             </ProtectedRoute>
           }
         />
@@ -116,4 +134,3 @@ function App() {
 }
 
 export default App
-

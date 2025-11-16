@@ -23,7 +23,8 @@
     "dashboard": "لوحة التحكم",
     "tickets": "التذاكر",
     "newTicket": "تذكرة جديدة",
-    "reports": "التقارير"
+    "reports": "التقارير",
+    "installation": "التركيب"
   },
   "ticket": {
     "title": "التذاكر",
@@ -143,7 +144,15 @@
     "no": "لا",
     "optional": "اختياري",
     "updating": "جاري التحديث..."
+  },
+  "installation": {
+    "title": "لوحة تركيب"
+  },
+  "mode": {
+    "title": "اختر الواجهة",
+    "reclamation": "شكوى",
+    "reclamationDesc": "إدارة الشكاوى",
+    "installation": "تركيب",
+    "installationDesc": "إدارة التركيبات"
   }
 }
-
-

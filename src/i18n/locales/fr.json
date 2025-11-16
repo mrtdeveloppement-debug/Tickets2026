@@ -23,7 +23,8 @@
     "dashboard": "Tableau de bord",
     "tickets": "Tickets",
     "newTicket": "Nouveau Ticket",
-    "reports": "Rapports"
+    "reports": "Rapports",
+    "installation": "Installation"
   },
   "ticket": {
     "title": "Tickets",
@@ -144,6 +145,15 @@
     "no": "Non",
     "optional": "optionnel",
     "updating": "Mise à jour..."
+  },
+  "installation": {
+    "title": "Dashboard Installation"
+  },
+  "mode": {
+    "title": "Choisissez une interface",
+    "reclamation": "Réclamation",
+    "reclamationDesc": "Gestion des réclamations",
+    "installation": "Installation",
+    "installationDesc": "Gestion des installations"
   }
 }
-

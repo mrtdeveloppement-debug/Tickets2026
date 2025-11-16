@@ -12,7 +12,8 @@ import {
   Shield,
   History,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Wrench
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
@@ -83,7 +84,8 @@ export default function Layout({ children }) {
 
   const navItems = [
     { path: '/', icon: LayoutDashboard, label: t('nav.dashboard') },
-    { path: '/tickets', icon: Ticket, label: t('nav.tickets') },
+    { path: '/reclamation', icon: Ticket, label: t('nav.tickets') },
+    { path: '/installation', icon: Wrench, label: t('nav.installation') || 'Installation' },
     { path: '/tickets/new', icon: PlusCircle, label: t('nav.newTicket') },
   ]
 
@@ -267,4 +269,3 @@ export default function Layout({ children }) {
     </div>
   )
 }
-

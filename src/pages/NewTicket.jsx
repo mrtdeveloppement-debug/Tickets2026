@@ -11,6 +11,7 @@ export default function NewTicket() {
   const [wilayas, setWilayas] = useState([])
   const [regions, setRegions] = useState([])
   const [errors, setErrors] = useState({})
+  const [category, setCategory] = useState('reclamation')
 
   const [formData, setFormData] = useState({
     subscriber_number: '',
@@ -80,7 +81,7 @@ export default function NewTicket() {
     // Client name is now optional (phone is the primary identifier)
     if (!formData.wilaya_code) newErrors.wilaya_code = t('validation.required')
     if (!formData.subscription_type) newErrors.subscription_type = t('validation.required')
-    if (!formData.complaint_type) newErrors.complaint_type = t('validation.required')
+    if (category === 'reclamation' && !formData.complaint_type) newErrors.complaint_type = t('validation.required')
     // Problem description now optional
 
     // Region required for NKC
@@ -146,6 +147,8 @@ export default function NewTicket() {
         ...formData,
         ticket_number: generateTicketNumber(),
         status: initialStatus,
+        category,
+        installation_status: category === 'installation' ? 'matériel' : null,
         created_by: user?.id,
         created_at: new Date().toISOString()
       }
@@ -155,13 +158,26 @@ export default function NewTicket() {
         delete ticketData.region_id
       }
 
-      const { data: ticket, error } = await supabase
+      let { data: ticket, error } = await supabase
         .from('tickets')
         .insert([ticketData])
         .select()
         .single()
 
-      if (error) throw error
+      if (error) {
+        console.error('Insert ticket failed, retrying without installation fields:', error)
+        const fallbackData = { ...ticketData }
+        delete fallbackData.category
+        delete fallbackData.installation_status
+        const res = await supabase
+          .from('tickets')
+          .insert([fallbackData])
+          .select()
+          .single()
+        ticket = res.data
+        error = res.error
+        if (error) throw error
+      }
 
       // Add to history
       const actorName = user?.user_metadata?.full_name || user?.email || 'Utilisateur'
@@ -175,10 +191,10 @@ export default function NewTicket() {
       })
 
       alert(t('ticket.createSuccess'))
-      navigate('/tickets')
+      navigate(category === 'installation' ? '/installation' : '/tickets')
     } catch (error) {
       console.error('Error creating ticket:', error)
-      alert(t('common.error'))
+      alert(`${t('common.error')}: ${error.message || ''}`)
     } finally {
       setLoading(false)
     }
@@ -205,7 +221,27 @@ export default function NewTicket() {
   return (
     <div className="max-w-4xl mx-auto">
       <div className="bg-white rounded-lg shadow-md p-8">
-        <h1 className="text-3xl font-bold text-gray-800 mb-6">{t('ticket.new')}</h1>
+        <h1 className="text-3xl font-bold text-gray-800 mb-6">{category === 'installation' ? 'Nouveau Ticket Installation' : t('ticket.new')}</h1>
+
+        {/* Category Switch */}
+        <div className="mb-6">
+          <div className="inline-flex rounded-md shadow-sm" role="group">
+            <button
+              type="button"
+              className={`px-4 py-2 text-sm font-medium border ${category === 'reclamation' ? 'bg-primary text-white border-primary' : 'bg-white text-gray-900 border-gray-300'}`}
+              onClick={() => setCategory('reclamation')}
+            >
+              Réclamation
+            </button>
+            <button
+              type="button"
+              className={`px-4 py-2 text-sm font-medium border -ml-px ${category === 'installation' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-900 border-gray-300'}`}
+              onClick={() => setCategory('installation')}
+            >
+              Installation
+            </button>
+          </div>
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Subscriber Number */}
@@ -339,61 +375,64 @@ export default function NewTicket() {
             )}
           </div>
 
-          {/* Complaint Type */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              {t('ticket.complaintType')} *
-            </label>
-            <select
-              name="complaint_type"
-              value={formData.complaint_type}
-              onChange={handleChange}
-              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent ${
-                errors.complaint_type ? 'border-red-500' : 'border-gray-300'
-              }`}
-            >
-              <option value="">-- {t('ticket.complaintType')} --</option>
-              {complaintTypes
-                .filter(ct => {
-                  // Filter based on subscription type
-                  if (!formData.subscription_type) return true
-                  return ct.applicable_to && ct.applicable_to.includes(formData.subscription_type)
-                })
-                .map(type => (
-                  <option key={type.code} value={type.code}>
-                    {i18n.language === 'ar' ? type.name_ar : i18n.language === 'en' ? type.name_en : type.name_fr}
-                  </option>
-                ))}
-            </select>
-            {errors.complaint_type && (
-              <p className="mt-1 text-sm text-red-600">{errors.complaint_type}</p>
-            )}
-          </div>
+          {/* Complaint Type (Réclamation uniquement) */}
+          {category === 'reclamation' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                {t('ticket.complaintType')} *
+              </label>
+              <select
+                name="complaint_type"
+                value={formData.complaint_type}
+                onChange={handleChange}
+                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent ${
+                  errors.complaint_type ? 'border-red-500' : 'border-gray-300'
+                }`}
+              >
+                <option value="">-- {t('ticket.complaintType')} --</option>
+                {complaintTypes
+                  .filter(ct => {
+                    if (!formData.subscription_type) return true
+                    return ct.applicable_to && ct.applicable_to.includes(formData.subscription_type)
+                  })
+                  .map(type => (
+                    <option key={type.code} value={type.code}>
+                      {i18n.language === 'ar' ? type.name_ar : i18n.language === 'en' ? type.name_en : type.name_fr}
+                    </option>
+                  ))}
+              </select>
+              {errors.complaint_type && (
+                <p className="mt-1 text-sm text-red-600">{errors.complaint_type}</p>
+              )}
+            </div>
+          )}
 
-          {/* Problem Description */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              {t('ticket.problemDescription')}
-            </label>
-            <textarea
-              name="problem_description"
-              value={formData.problem_description}
-              onChange={handleChange}
-              rows="4"
-              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent ${
-                errors.problem_description ? 'border-red-500' : 'border-gray-300'
-              }`}
-            />
-            {errors.problem_description && (
-              <p className="mt-1 text-sm text-red-600">{errors.problem_description}</p>
-            )}
-          </div>
+          {/* Description (Réclamation uniquement) */}
+          {category === 'reclamation' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                {t('ticket.problemDescription')}
+              </label>
+              <textarea
+                name="problem_description"
+                value={formData.problem_description}
+                onChange={handleChange}
+                rows="4"
+                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent ${
+                  errors.problem_description ? 'border-red-500' : 'border-gray-300'
+                }`}
+              />
+              {errors.problem_description && (
+                <p className="mt-1 text-sm text-red-600">{errors.problem_description}</p>
+              )}
+            </div>
+          )}
 
           {/* Actions */}
           <div className="flex justify-end space-x-4">
             <button
               type="button"
-              onClick={() => navigate('/tickets')}
+              onClick={() => navigate(category === 'installation' ? '/installation' : '/tickets')}
               className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors flex items-center space-x-2"
             >
               <X size={20} />

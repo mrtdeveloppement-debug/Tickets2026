@@ -92,6 +92,7 @@ export default function Dashboard() {
   const [sawiByRegion, setSawiByRegion] = useState([])
   const [lateSawiByRegion, setLateSawiByRegion] = useState([])
   const [lateSawiNkcByZone, setLateSawiNkcByZone] = useState([])
+  const [sawiNkcByZone, setSawiNkcByZone] = useState([])
   const [overdueCount, setOverdueCount] = useState(0)
   const [updatingOverdue, setUpdatingOverdue] = useState(false)
 
@@ -222,6 +223,15 @@ export default function Dashboard() {
         lateSawiRegionGroups[wilaya] = (lateSawiRegionGroups[wilaya] || 0) + 1
       })
       setLateSawiByRegion(Object.entries(lateSawiRegionGroups))
+
+      // Chart 7: SAWI tickets in NKC by zone (open SAWI NKC tickets)
+      const sawiNkcTickets = sawiTickets.filter(t => t.wilaya_code === 'NKC' || t.wilaya_code === '15')
+      const sawiNkcZoneGroups = {}
+      sawiNkcTickets.forEach(ticket => {
+        const zone = ticket.regions?.name_fr || 'Non spécifié'
+        sawiNkcZoneGroups[zone] = (sawiNkcZoneGroups[zone] || 0) + 1
+      })
+      setSawiNkcByZone(Object.entries(sawiNkcZoneGroups))
 
       // Chart 6: Late SAWI tickets in NKC by zone (open late SAWI NKC tickets)
       const lateSawiNkcTickets = lateSawiTickets.filter(t => t.wilaya_code === 'NKC' || t.wilaya_code === '15')
@@ -360,6 +370,13 @@ export default function Dashboard() {
       backgroundColor: '#006400',
     }]
   }
+
+  
+  const lateTicketsByDaysSorted = [...lateTicketsByDays].sort((a, b) => b[1] - a[1])
+  const sawiByRegionSorted = [...sawiByRegion].sort((a, b) => b[1] - a[1])
+  const lateSawiByRegionSorted = [...lateSawiByRegion].sort((a, b) => b[1] - a[1])
+  const lateSawiNkcByZoneSorted = [...lateSawiNkcByZone].sort((a, b) => b[1] - a[1])
+  const sawiNkcByZoneSorted = [...sawiNkcByZone].sort((a, b) => b[1] - a[1])
 
   if (loading) {
     return (
@@ -503,12 +520,52 @@ export default function Dashboard() {
 
         {/* Row 2: Chart 3 & 4 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Chart 3: Late Tickets by Days */}
+          {/* Chart 3: SAWI NKC by Zone */}
           <div className="bg-gradient-to-br from-white to-gray-50 rounded-xl shadow-lg hover:shadow-xl transition-shadow p-6 border border-gray-100">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-lg font-bold text-gray-900">
-                  Graph 3: Tickets en Retard par Jours
+                  Graph 3: SAWI NKC par Zone
+                </h3>
+                <p className="text-xs text-gray-500 mt-1">Répartition par zones de Nouakchott</p>
+              </div>
+              <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                <span className="text-lg">🟦</span>
+              </div>
+            </div>
+            {sawiNkcByZone.length > 0 ? (
+              <div style={{ height: '350px' }}>
+                <Bar
+                  data={{
+                    labels: sawiNkcByZoneSorted.map(([zone]) => zone),
+                    datasets: [{
+                      label: 'Tickets SAWI NKC',
+                      data: sawiNkcByZoneSorted.map(([, count]) => count),
+                      backgroundColor: '#2563eb',
+                    }]
+                  }}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                      legend: { position: 'bottom', labels: { font: { size: 11, weight: 500 } } },
+                      valueLabel: { color: '#fff', font: 'bold 11px sans-serif' }
+                    },
+                    scales: { y: { beginAtZero: true, ticks: { stepSize: 1, precision: 0, font: { size: 11 } } } }
+                  }}
+                />
+              </div>
+            ) : (
+              <p className="text-gray-500 text-sm text-center py-8">Aucun ticket SAWI NKC</p>
+            )}
+          </div>
+
+          {/* Chart 4: Late Tickets by Days */}
+          <div className="bg-gradient-to-br from-white to-gray-50 rounded-xl shadow-lg hover:shadow-xl transition-shadow p-6 border border-gray-100">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">
+                  Graph 4: Tickets en Retard par Jours
                 </h3>
                 <p className="text-xs text-gray-500 mt-1">Distribution des retards</p>
               </div>
@@ -520,11 +577,11 @@ export default function Dashboard() {
               <div style={{ height: '350px' }}>
                 <Bar
                   data={{
-                    labels: lateTicketsByDays.map(([days]) => `${days} jour${days !== 1 ? 's' : ''}`),
+                    labels: lateTicketsByDaysSorted.map(([days]) => `${days} jour${days !== 1 ? 's' : ''}`),
                     datasets: [{
                       label: 'Nombre de Tickets',
-                      data: lateTicketsByDays.map(([, count]) => count),
-                      backgroundColor: lateTicketsByDays.map(([days]) => 
+                      data: lateTicketsByDaysSorted.map(([, count]) => count),
+                      backgroundColor: lateTicketsByDaysSorted.map(([days]) => 
                         days === 0 ? '#22c55e' : '#ef4444'
                       ),
                     }]
@@ -544,13 +601,16 @@ export default function Dashboard() {
               <p className="text-gray-500 text-sm text-center py-8">Aucun ticket en retard</p>
             )}
           </div>
+      </div>
 
-          {/* Chart 4: SAWI by Region */}
+      {/* Row 3: Chart 5 & 6 */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Chart 5: SAWI by Region (Wilaya) */}
           <div className="bg-gradient-to-br from-white to-gray-50 rounded-xl shadow-lg hover:shadow-xl transition-shadow p-6 border border-gray-100">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-lg font-bold text-gray-900">
-                  Graph 4: SAWI par Région
+                  Graph 5: SAWI par Région
                 </h3>
                 <p className="text-xs text-gray-500 mt-1">Répartition géographique</p>
               </div>
@@ -562,10 +622,10 @@ export default function Dashboard() {
               <div style={{ height: '350px' }}>
                 <Bar
                   data={{
-                    labels: sawiByRegion.map(([region]) => region),
+                    labels: sawiByRegionSorted.map(([region]) => region),
                     datasets: [{
                       label: 'Tickets SAWI',
-                      data: sawiByRegion.map(([, count]) => count),
+                      data: sawiByRegionSorted.map(([, count]) => count),
                       backgroundColor: '#ffbf00',
                     }]
                   }}
@@ -584,16 +644,13 @@ export default function Dashboard() {
               <p className="text-gray-500 text-sm text-center py-8">Aucun ticket SAWI</p>
             )}
           </div>
-        </div>
 
-        {/* Row 3: Chart 5 & 6 */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Chart 5: Late SAWI by Region (Wilaya) */}
+          {/* Chart 6: Late SAWI by Region (Wilaya) */}
           <div className="bg-gradient-to-br from-white to-gray-50 rounded-xl shadow-lg hover:shadow-xl transition-shadow p-6 border border-gray-100">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-lg font-bold text-gray-900">
-                  Graph 5: SAWI en Retard par Région
+                  Graph 6: SAWI en Retard par Région
                 </h3>
                 <p className="text-xs text-gray-500 mt-1">Tickets critiques par zone</p>
               </div>
@@ -605,10 +662,10 @@ export default function Dashboard() {
               <div style={{ height: '350px' }}>
                 <Bar
                   data={{
-                    labels: lateSawiByRegion.map(([region]) => region),
+                    labels: lateSawiByRegionSorted.map(([region]) => region),
                     datasets: [{
                       label: 'Tickets SAWI en Retard',
-                      data: lateSawiByRegion.map(([, count]) => count),
+                      data: lateSawiByRegionSorted.map(([, count]) => count),
                       backgroundColor: '#ef4444',
                     }]
                   }}
@@ -627,46 +684,49 @@ export default function Dashboard() {
               <p className="text-gray-500 text-sm text-center py-8">Aucun ticket SAWI en retard</p>
             )}
           </div>
+        </div>
+      </div>
 
-          {/* Chart 6: Late SAWI NKC by Zone */}
-          <div className="bg-gradient-to-br from-white to-gray-50 rounded-xl shadow-lg hover:shadow-xl transition-shadow p-6 border border-gray-100">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="text-lg font-bold text-gray-900">
-                  Graph 6: SAWI NKC en Retard par Zone
-                </h3>
-                <p className="text-xs text-gray-500 mt-1">Zones Nouakchott en retard</p>
-              </div>
-              <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
-                <span className="text-lg">🚨</span>
-              </div>
+      {/* Row 4: Chart 7 */}
+      <div className="grid grid-cols-1 lg:grid-cols-1 gap-6">
+        {/* Chart 7: Late SAWI NKC by Zone */}
+        <div className="bg-gradient-to-br from-white to-gray-50 rounded-xl shadow-lg hover:shadow-xl transition-shadow p-6 border border-gray-100">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-bold text-gray-900">
+                Graph 7: SAWI NKC en Retard par Zone
+              </h3>
+              <p className="text-xs text-gray-500 mt-1">Zones Nouakchott en retard</p>
             </div>
-            {lateSawiNkcByZone.length > 0 ? (
-              <div style={{ height: '350px' }}>
-                <Bar
-                  data={{
-                    labels: lateSawiNkcByZone.map(([zone]) => zone),
-                    datasets: [{
-                      label: 'Tickets SAWI NKC en Retard',
-                      data: lateSawiNkcByZone.map(([, count]) => count),
-                      backgroundColor: '#ef4444',
-                    }]
-                  }}
-                  options={{
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                      legend: { position: 'bottom', labels: { font: { size: 11, weight: 500 } } },
-                      valueLabel: { color: '#fff', font: 'bold 11px sans-serif' }
-                    },
-                    scales: { y: { beginAtZero: true, ticks: { stepSize: 1, precision: 0, font: { size: 11 } } } }
-                  }}
-                />
-              </div>
-            ) : (
-              <p className="text-gray-500 text-sm text-center py-8">Aucun ticket SAWI NKC en retard</p>
-            )}
+            <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
+              <span className="text-lg">🚨</span>
+            </div>
           </div>
+          {lateSawiNkcByZone.length > 0 ? (
+            <div style={{ height: '350px' }}>
+              <Bar
+                data={{
+                  labels: lateSawiNkcByZoneSorted.map(([zone]) => zone),
+                  datasets: [{
+                    label: 'Tickets SAWI NKC en Retard',
+                    data: lateSawiNkcByZoneSorted.map(([, count]) => count),
+                    backgroundColor: '#ef4444',
+                  }]
+                }}
+                options={{
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  plugins: {
+                    legend: { position: 'bottom', labels: { font: { size: 11, weight: 500 } } },
+                    valueLabel: { color: '#fff', font: 'bold 11px sans-serif' }
+                  },
+                  scales: { y: { beginAtZero: true, ticks: { stepSize: 1, precision: 0, font: { size: 11 } } } }
+                }}
+              />
+            </div>
+          ) : (
+            <p className="text-gray-500 text-sm text-center py-8">Aucun ticket SAWI NKC en retard</p>
+          )}
         </div>
       </div>
 
