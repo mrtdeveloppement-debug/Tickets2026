@@ -24,9 +24,16 @@ export default function TicketList() {
     const norm = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '_')
 
     if (category === 'installation') {
-      filtered = filtered.filter(t => t.category === 'installation' || !!t.installation_status)
+      filtered = filtered.filter(t => (
+        t.category === 'installation' ||
+        !!t.installation_status ||
+        t.complaint_type == null
+      ))
     } else if (category === 'reclamation') {
-      filtered = filtered.filter(t => !t.category || t.category === 'reclamation')
+      filtered = filtered.filter(t => (
+        t.category === 'reclamation' ||
+        (t.category == null && t.complaint_type != null)
+      ))
     }
 
     if (searchTerm) {
@@ -136,7 +143,7 @@ export default function TicketList() {
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold text-gray-800">{category === 'installation' ? 'Installations' : 'Réclamations'}</h1>
         <Link
-          to="/tickets/new"
+          to={category === 'installation' ? '/tickets/new?category=installation' : '/tickets/new?category=reclamation'}
           className="bg-primary hover:bg-primary-dark text-white px-6 py-2 rounded-lg transition-colors"
         >
           + {t('ticket.new')}

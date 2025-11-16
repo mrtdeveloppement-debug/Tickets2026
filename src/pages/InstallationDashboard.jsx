@@ -49,10 +49,44 @@ export default function InstallationDashboard() {
         else if (timeRange === 'month') from.setMonth(currentDate.getMonth() - 1)
         else if (timeRange === 'year') from.setFullYear(currentDate.getFullYear() - 1)
         const fromIso = from.toISOString()
+        await supabase
+          .from('tickets')
+          .update({ category: 'installation' })
+          .is('category', null)
+          .is('complaint_type', null)
+
+        await supabase
+          .from('tickets')
+          .update({ category: 'reclamation' })
+          .is('category', null)
+          .not('complaint_type', 'is', null)
+        
+        await supabase
+          .from('tickets')
+          .update({ category: 'installation' })
+          .is('category', null)
+          .not('installation_status', 'is', null)
+
+        // Cleanup: recategorize any ticket with installation_status set but wrong category
+        await supabase
+          .from('tickets')
+          .update({ category: 'installation' })
+          .not('installation_status', 'is', null)
+          .neq('category', 'installation')
+        await supabase
+          .from('tickets')
+          .update({ installation_status: 'matériel', updated_at: new Date().toISOString() })
+          .eq('category', 'installation')
+          .or("installation_status.is.null,installation_status.eq.''")
+
+        await supabase
+          .from('tickets')
+          .update({ installation_status: null, updated_at: new Date().toISOString() })
+          .eq('category', 'reclamation')
+          .not('installation_status', 'is', null)
         let query = supabase
           .from('tickets')
           .select('*, wilayas(name_fr), regions(name_fr)')
-          .eq('category', 'installation')
           .order('created_at', { ascending: false })
         if (timeRange !== 'all') {
           query = query.gte('created_at', fromIso)
@@ -61,22 +95,27 @@ export default function InstallationDashboard() {
 
         if (error) throw error
         const loaded = data || []
-        const needInit = loaded.filter(t => (!t.installation_status || String(t.installation_status).trim() === ''))
+        const allInstallation = loaded.filter(t => (
+          t.category === 'installation' ||
+          (!!t.installation_status && String(t.installation_status).trim() !== '') ||
+          t.complaint_type == null
+        ))
+        const needInit = allInstallation.filter(t => (!t.installation_status || String(t.installation_status).trim() === ''))
         if (needInit.length > 0) {
           await supabase
             .from('tickets')
             .update({ installation_status: 'matériel', updated_at: new Date().toISOString() })
             .in('id', needInit.map(t => t.id))
         }
-        const normalized = loaded.map(t => (
+        const normalized = allInstallation.map(t => (
           (!t.installation_status || String(t.installation_status).trim() === '')
             ? { ...t, installation_status: 'matériel' }
             : t
         ))
         setInstallationTickets(normalized)
 
-        const allInstallation = normalized
-        const openTickets = allInstallation.filter(t => t.installation_status !== 'installé' && t.installation_status !== 'annulé')
+        const allInstallationNormalized = normalized
+        const openTickets = allInstallationNormalized.filter(t => t.installation_status !== 'installé' && t.installation_status !== 'annulé')
 
         const serviceGroups = {}
         openTickets.forEach(ticket => {

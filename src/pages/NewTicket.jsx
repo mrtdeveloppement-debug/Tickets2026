@@ -150,14 +150,21 @@ export default function NewTicket() {
         ? 'en_cours'
         : 'nouveau'
 
+      const urlCat = new URLSearchParams(location.search).get('category')
+      const finalCategory = (urlCat === 'installation' || category === 'installation') ? 'installation' : 'reclamation'
+
       const ticketData = {
         ...formData,
         ticket_number: generateTicketNumber(),
         status: initialStatus,
-        category,
-        installation_status: category === 'installation' ? 'matériel' : null,
+        category: finalCategory,
+        installation_status: finalCategory === 'installation' ? 'matériel' : null,
         created_by: user?.id,
         created_at: new Date().toISOString()
+      }
+
+      if (finalCategory === 'installation') {
+        ticketData.complaint_type = null
       }
 
       // Remove region_id if not NKC
@@ -189,7 +196,26 @@ export default function NewTicket() {
             .from('tickets')
             .update({ category: 'installation', installation_status: 'matériel', updated_at: new Date().toISOString() })
             .eq('id', ticket.id)
+          const { data: refreshed } = await supabase
+            .from('tickets')
+            .select('*')
+            .eq('id', ticket.id)
+            .single()
+          if (refreshed) ticket = refreshed
         }
+      }
+
+      if (!error && finalCategory === 'installation' && ticket) {
+        await supabase
+          .from('tickets')
+          .update({ category: 'installation', installation_status: 'matériel', updated_at: new Date().toISOString() })
+          .eq('id', ticket.id)
+        const { data: refreshed } = await supabase
+          .from('tickets')
+          .select('*')
+          .eq('id', ticket.id)
+          .single()
+        if (refreshed) ticket = refreshed
       }
 
       // Add to history
@@ -204,7 +230,7 @@ export default function NewTicket() {
       })
 
       alert(t('ticket.createSuccess'))
-      navigate(category === 'installation' ? '/tickets?category=installation' : '/tickets')
+      navigate(finalCategory === 'installation' ? '/tickets?category=installation' : '/tickets')
     } catch (error) {
       console.error('Error creating ticket:', error)
       alert(`${t('common.error')}: ${error.message || ''}`)

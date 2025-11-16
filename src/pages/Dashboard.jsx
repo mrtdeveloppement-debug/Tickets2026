@@ -124,7 +124,9 @@ export default function Dashboard() {
       if (error) throw error
 
       // Focus on Réclamations only
-      const recTickets = (tickets || []).filter(t => !t.category || t.category === 'reclamation')
+      const recTickets = (tickets || []).filter(t => (
+        t.category === 'reclamation' || (t.category == null && t.complaint_type != null)
+      ))
 
       // Calculate stats
       const total = recTickets.length
