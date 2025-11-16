@@ -17,7 +17,7 @@ export default function TicketList() {
 
   useEffect(() => {
     loadTickets()
-  }, [])
+  }, [category])
 
   const filterTickets = useCallback(() => {
     let filtered = tickets
@@ -59,7 +59,7 @@ export default function TicketList() {
       const { data, error } = await supabase
         .from('tickets')
         .select('*, wilayas(name_fr, name_ar, name_en), regions(name_fr, name_ar, name_en)')
-        .or(category === 'installation' ? 'category.eq.installation' : 'category.is.null,category.eq.reclamation')
+        .or(category === 'installation' ? 'category.eq.installation,installation_status.not.is.null' : 'category.is.null,category.eq.reclamation')
         .order('created_at', { ascending: false })
 
       if (error) throw error

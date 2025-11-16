@@ -103,17 +103,29 @@ export default function NewTicket() {
   }
 
   const checkDuplicateTicket = async () => {
-    // Check by phone number and subscription type
-    const { data, error } = await supabase
+    const { data: openBySubscriber, error: errSub } = await supabase
+      .from('tickets')
+      .select('id')
+      .eq('subscriber_number', formData.subscriber_number)
+      .neq('status', 'fermé')
+
+    if (errSub) throw errSub
+    if ((openBySubscriber || []).length > 0) {
+      return { ok: false, reason: 'subscriber' }
+    }
+
+    const { data: openByPhone, error: errPhone } = await supabase
       .from('tickets')
       .select('id')
       .eq('phone', formData.phone)
-      .eq('subscription_type', formData.subscription_type)
       .neq('status', 'fermé')
-      .limit(1)
 
-    if (error) throw error
-    return data && data.length > 0
+    if (errPhone) throw errPhone
+    if ((openByPhone || []).length >= 2) {
+      return { ok: false, reason: 'phone' }
+    }
+
+    return { ok: true }
   }
 
   const generateTicketNumber = () => {
@@ -133,9 +145,13 @@ export default function NewTicket() {
 
     try {
       // Check for duplicate open ticket
-      const hasDuplicate = await checkDuplicateTicket()
-      if (hasDuplicate) {
-        alert(t('ticket.duplicateError'))
+      const dup = await checkDuplicateTicket()
+      if (!dup.ok) {
+        if (dup.reason === 'subscriber') {
+          alert(t('ticket.duplicateError'))
+        } else if (dup.reason === 'phone') {
+          alert('Limite: maximum 2 tickets ouverts pour le même téléphone')
+        }
         setLoading(false)
         return
       }

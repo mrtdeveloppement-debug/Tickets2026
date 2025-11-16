@@ -43,7 +43,7 @@ export default function InstallationDashboard() {
         const { data, error } = await supabase
           .from('tickets')
           .select('*, wilayas(name_fr), regions(name_fr)')
-          .eq('category', 'installation')
+          .or('category.eq.installation,installation_status.not.is.null')
           .order('created_at', { ascending: false })
 
         if (error) throw error
