@@ -112,11 +112,10 @@ export default function InstallationDashboard() {
             .update({ installation_status: 'matériel', updated_at: new Date().toISOString() })
             .in('id', needInit.map(t => t.id))
         }
-        const normalized = allInstallation.map(t => (
-          (!t.installation_status || String(t.installation_status).trim() === '')
-            ? { ...t, installation_status: 'matériel' }
-            : t
-        ))
+        const normalized = allInstallation.map(t => {
+          const inst = getInstallationStatus(t)
+          return { ...t, installation_status: inst }
+        })
         setInstallationTickets(normalized)
 
         const allInstallationNormalized = normalized
@@ -134,9 +133,8 @@ export default function InstallationDashboard() {
         setServiceDelayData(serviceGroups)
 
         const counts = {}
-        allInstallation.forEach(t => {
-          const base = t.installation_status && String(t.installation_status).trim() !== '' ? t.installation_status : 'matériel'
-          const s = normalizeKey(base)
+        normalized.forEach(t => {
+          const s = normalizeKey(getInstallationStatus(t))
           counts[s] = (counts[s] || 0) + 1
         })
         setStatusCounts(counts)
@@ -148,11 +146,12 @@ export default function InstallationDashboard() {
           const days = Math.floor((new Date() - createdDate) / (1000 * 60 * 60 * 24))
           lateByDaysCount[days] = (lateByDaysCount[days] || 0) + 1
           const hours = Math.floor((new Date() - createdDate) / (1000 * 60 * 60))
+          const inst = getInstallationStatus(ticket)
           if (hours >= 48 && (
-            ticket.installation_status === 'matériel' ||
-            ticket.installation_status === 'équipe_installation' ||
-            ticket.installation_status === 'optimisation' ||
-            ticket.installation_status === 'extension'
+            inst === 'matériel' ||
+            inst === 'équipe_installation' ||
+            inst === 'optimisation' ||
+            inst === 'extension'
           )) {
             overdue48Count++
           }
@@ -496,7 +495,7 @@ export default function InstallationDashboard() {
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {(() => {
-                const base = selectedStatus ? installationTickets.filter(t => normalizeKey(t.installation_status) === normalizeKey(selectedStatus)) : installationTickets
+                const base = selectedStatus ? installationTickets.filter(t => normalizeKey(getInstallationStatus(t)) === normalizeKey(selectedStatus)) : installationTickets
                 const s = (installSearch || '').toLowerCase()
                 const filtered = s
                   ? base.filter(t => (
@@ -517,7 +516,7 @@ export default function InstallationDashboard() {
                     <td className="px-6 py-4 text-sm text-gray-500">{t.wilayas?.name_fr || t.wilaya_code}</td>
                     <td className="px-6 py-4 text-sm text-gray-500">{t.regions?.name_fr || '-'}</td>
                     <td className="px-6 py-4 text-sm text-gray-500">{t.subscription_type}</td>
-                    <td className="px-6 py-4 text-sm text-gray-500">{t.installation_status || '-'}</td>
+                    <td className="px-6 py-4 text-sm text-gray-500">{getInstallationStatus(t) || '-'}</td>
                   </tr>
                 ))
               })()}
@@ -533,3 +532,26 @@ export default function InstallationDashboard() {
     </div>
   )
 }
+  const INSTALLATION_STATUSES = ['matériel','équipe_installation','installé','annulé','injoignable','installation_impossible','optimisation','extension','manque_de_materiel']
+  const mapAllowedToInstallStatus = (status) => {
+    switch (String(status)) {
+      case 'assigné':
+        return 'matériel'
+      case 'en_cours':
+        return 'équipe_installation'
+      case 'fermé':
+        return 'installé'
+      case 'optimisation':
+        return 'optimisation'
+      case 'injoignable':
+        return 'injoignable'
+      default:
+        return 'matériel'
+    }
+  }
+  const getInstallationStatus = (t) => {
+    const raw = t.installation_status
+    const has = raw && String(raw).trim() !== ''
+    if (has) return String(raw)
+    return mapAllowedToInstallStatus(t.status || '')
+  }
