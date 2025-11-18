@@ -68,10 +68,10 @@ export default function EditTicket() {
         subscription_type: data.subscription_type || '',
         complaint_type: data.complaint_type || '',
         problem_description: data.problem_description || '',
-        status: data.status || 'ouvert',
+        status: data.status || 'nouveau',
         installation_status: (data.installation_status && String(data.installation_status).trim() !== '') ? data.installation_status : 'matériel'
       })
-      const cat = data.category || (data.complaint_type ? 'reclamation' : 'installation')
+      const cat = data.category || 'reclamation'
       setCategory(cat)
     } catch (err) {
       console.error('Error loading ticket:', err)
@@ -188,7 +188,7 @@ export default function EditTicket() {
             case 'installation_impossible':
               return 'fermé'
             case 'optimisation':
-              return 'optimisation'
+              return 'en_cours'
             case 'injoignable':
               return 'injoignable'
             default:
@@ -223,7 +223,7 @@ export default function EditTicket() {
               case 'installation_impossible':
                 return 'fermé'
               case 'optimisation':
-                return 'optimisation'
+                return 'en_cours'
               case 'injoignable':
                 return 'injoignable'
               default:
@@ -239,9 +239,38 @@ export default function EditTicket() {
             .update(fallback)
             .eq('id', id)
           if (fbErr) throw fbErr
+        } else if (category === 'reclamation' && msg.includes('tickets_status_check') && formData.status === 'optimisation') {
+          const { data: { user } } = await supabase.auth.getUser()
+          const actorName = user?.user_metadata?.full_name || user?.email || 'Utilisateur'
+          const { error: fbErr } = await supabase
+            .from('tickets')
+            .update({ status: 'en_cours', updated_at: new Date().toISOString() })
+            .eq('id', id)
+          if (fbErr) throw fbErr
+          await supabase.from('ticket_history').insert({
+            ticket_id: id,
+            action: 'status_change',
+            to_status: 'optimisation',
+            changed_by: user?.id || null,
+            changed_by_name: actorName,
+            created_at: new Date().toISOString()
+          })
         } else {
           throw error
         }
+      }
+
+      if (category === 'installation') {
+        const { data: { user } } = await supabase.auth.getUser()
+        const actorName = user?.user_metadata?.full_name || user?.email || 'Utilisateur'
+        await supabase.from('ticket_history').insert({
+          ticket_id: id,
+          action: 'installation_status_change',
+          to_status: formData.installation_status || 'matériel',
+          changed_by: user?.id || null,
+          changed_by_name: actorName,
+          created_at: new Date().toISOString()
+        })
       }
 
       alert('Ticket modifié avec succès!')
@@ -334,7 +363,7 @@ export default function EditTicket() {
             />
           </div>
 
-          {/* Status global (Réclamation uniquement) */}
+          {/* Statut (Réclamation uniquement) */}
           {category === 'reclamation' && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -346,8 +375,12 @@ export default function EditTicket() {
                 onChange={handleChange}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
               >
-                <option value="ouvert">Ouvert</option>
+                <option value="nouveau">Nouveau</option>
+                <option value="assigné">Assigné</option>
+                <option value="paiement">Paiement</option>
                 <option value="en_cours">En cours</option>
+                <option value="optimisation">Optimisation</option>
+                <option value="injoignable">Injoignable</option>
                 <option value="en_retard">En retard</option>
                 <option value="fermé">Fermé</option>
               </select>
@@ -465,7 +498,7 @@ export default function EditTicket() {
             </div>
           )}
 
-          {/* Installation Status (Installation uniquement) */}
+          {/* Statut installation (Installation uniquement) */}
           {category === 'installation' && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">

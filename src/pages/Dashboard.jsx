@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { getOverdueTicketsCount, checkAndUpdateOverdueTickets } from '../utils/ticketStatus'
 import { 
@@ -64,6 +64,7 @@ const valueLabelPlugin = {
       })
     })
   }
+
 }
 
 ChartJS.register(valueLabelPlugin)
@@ -71,7 +72,11 @@ ChartJS.register(valueLabelPlugin)
 export default function Dashboard() {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const location = useLocation()
   const [searchInput, setSearchInput] = useState('')
+  const searchInputRef = useRef(null)
+  const searchSelectionRef = useRef({ start: 0, end: 0 })
+  const [dashboardCategory, setDashboardCategory] = useState('reclamation')
   const [timeRange, setTimeRange] = useState('all')
   const [stats, setStats] = useState({
     total: 0,
@@ -101,10 +106,54 @@ export default function Dashboard() {
   const [sawiNkcByZone, setSawiNkcByZone] = useState([])
   const [overdueCount, setOverdueCount] = useState(0)
   const [updatingOverdue, setUpdatingOverdue] = useState(false)
+  const [installStats, setInstallStats] = useState({ total: 0, byStatus: {} })
+  const [installStatusOverrideById, setInstallStatusOverrideById] = useState({})
+  const [installOverdueCount, setInstallOverdueCount] = useState(0)
+
+  const INSTALLATION_STATUSES = ['matériel','équipe_installation','installé','annulé','injoignable','installation_impossible','optimisation','extension','manque_de_materiel']
+
+  const mapAllowedToInstallStatus = (status) => {
+    switch (String(status)) {
+      case 'assigné':
+        return 'matériel'
+      case 'en_cours':
+        return 'équipe_installation'
+      case 'fermé':
+        return 'installé'
+      case 'optimisation':
+        return 'optimisation'
+      case 'injoignable':
+        return 'injoignable'
+      default:
+        return 'matériel'
+    }
+  }
+
+  const getInstallationStatus = (ticket) => {
+    const over = installStatusOverrideById[ticket.id]
+    if (over) return over
+    const raw = ticket.installation_status
+    const has = raw && String(raw).trim() !== ''
+    if (has) return String(raw)
+    return mapAllowedToInstallStatus(ticket.status || '')
+  }
+
+  const normalizeStatus = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '_')
+
+  const isInstallationOverdue = (ticket) => {
+    try {
+      const hours = Math.floor((new Date() - new Date(ticket.created_at)) / (1000 * 60 * 60))
+      const inst = normalizeStatus(getInstallationStatus(ticket))
+      const overdueStatuses = new Set(['materiel', 'equipe_installation', 'optimisation', 'extension', 'manque_de_materiel'])
+      return hours >= 24 && overdueStatuses.has(inst)
+    } catch (e) {
+      return false
+    }
+  }
 
   useEffect(() => {
     loadDashboardData()
-  }, [timeRange])
+  }, [timeRange, dashboardCategory])
 
   const loadDashboardData = async () => {
     try {
@@ -125,21 +174,49 @@ export default function Dashboard() {
 
       if (error) throw error
 
-      // Focus on Réclamations only
-      const recTickets = (tickets || []).filter(t => (
-        t.category === 'reclamation' || (t.category == null && t.complaint_type != null)
+      let baseTickets = (tickets || []).filter(t => (
+        dashboardCategory === 'installation'
+          ? (t.category === 'installation' || !!t.installation_status || t.complaint_type == null)
+          : (t.category === 'reclamation' || (t.category == null && t.complaint_type != null))
       ))
 
+      let histIds = new Set()
+      if ((tickets || []).length > 0) {
+        const ids = (tickets || []).map(t => t.id)
+        const { data: hist } = await supabase
+          .from('ticket_history')
+          .select('ticket_id, to_status, action, created_at')
+          .in('ticket_id', ids)
+          .eq('action', 'installation_status_change')
+          .order('created_at', { ascending: false })
+        const map = {}
+        for (const h of (hist || [])) {
+          if (!map[h.ticket_id]) {
+            map[h.ticket_id] = h.to_status || 'matériel'
+          }
+          histIds.add(h.ticket_id)
+        }
+        setInstallStatusOverrideById(map)
+      } else {
+        setInstallStatusOverrideById({})
+      }
+
+      if (dashboardCategory === 'installation' && histIds.size > 0) {
+        baseTickets = (tickets || []).filter(t => (
+          t.category === 'installation' || histIds.has(t.id) || !!t.installation_status || t.complaint_type == null
+        ))
+      }
+
       // Calculate stats
-      const total = recTickets.length
-      const open = recTickets.filter(t => t.status !== 'fermé').length
-      const closed = recTickets.filter(t => t.status === 'fermé').length
-      const late = recTickets.filter(t => t.status === 'en_retard').length
-      const assigned = recTickets.filter(t => t.status === 'assigné').length
-      const payment = recTickets.filter(t => t.status === 'paiement').length
-      const inProgress = recTickets.filter(t => t.status === 'en_cours').length
-      const unreachable = recTickets.filter(t => t.status === 'injoignable').length
-      const optimisation = recTickets.filter(t => t.status === 'optimisation').length
+      const total = baseTickets.length
+      const open = baseTickets.filter(t => t.status !== 'fermé').length
+      const closed = baseTickets.filter(t => t.status === 'fermé').length
+      const late = baseTickets.filter(t => t.status === 'en_retard').length
+      const assigned = baseTickets.filter(t => t.status === 'assigné').length
+      const payment = baseTickets.filter(t => t.status === 'paiement').length
+      const inProgress = baseTickets.filter(t => t.status === 'en_cours').length
+      const unreachable = baseTickets.filter(t => t.status === 'injoignable').length
+      const optimisation = baseTickets.filter(t => t.status === 'optimisation').length
 
       setStats({ total, open, closed, late, assigned, payment, inProgress, unreachable, optimisation })
 
@@ -147,7 +224,7 @@ export default function Dashboard() {
       await loadOverdueCount()
 
       // Group by wilaya
-      const wilayaGroups = recTickets.reduce((acc, ticket) => {
+      const wilayaGroups = baseTickets.reduce((acc, ticket) => {
         const wilaya = ticket.wilayas?.name_fr || ticket.wilaya_code
         acc[wilaya] = (acc[wilaya] || 0) + 1
         return acc
@@ -155,7 +232,7 @@ export default function Dashboard() {
       setWilayaData(Object.entries(wilayaGroups))
 
       // Group by region (Nouakchott only) — accept both 'NKC' and '15'
-      const nkcTickets = recTickets.filter(t => t.wilaya_code === 'NKC' || t.wilaya_code === '15')
+      const nkcTickets = baseTickets.filter(t => t.wilaya_code === 'NKC' || t.wilaya_code === '15')
       const regionGroups = nkcTickets.reduce((acc, ticket) => {
         const region = ticket.regions?.name_fr || 'Non spécifié'
         acc[region] = (acc[region] || 0) + 1
@@ -164,21 +241,36 @@ export default function Dashboard() {
       setRegionData(Object.entries(regionGroups))
 
       // Group by service
-      const serviceGroups = recTickets.reduce((acc, ticket) => {
+      const serviceGroups = baseTickets.reduce((acc, ticket) => {
         acc[ticket.subscription_type] = (acc[ticket.subscription_type] || 0) + 1
         return acc
       }, {})
       setServiceData(Object.entries(serviceGroups))
 
       // Recent tickets
-      setRecentTickets(recTickets.slice(0, 5))
+      setRecentTickets(baseTickets.slice(0, 5))
+
+      // Installation stats (counts by installation_status)
+      if (dashboardCategory === 'installation') {
+        const byStatus = {}
+        baseTickets.forEach(t => {
+          const s = getInstallationStatus(t)
+          byStatus[s] = (byStatus[s] || 0) + 1
+        })
+        const overdueCount = baseTickets.filter(isInstallationOverdue).length
+        setInstallStats({ total: baseTickets.length, byStatus })
+        setInstallOverdueCount(overdueCount)
+      } else {
+        setInstallStats({ total: 0, byStatus: {} })
+        setInstallOverdueCount(0)
+      }
 
       // ========== NEW CHARTS FOR OPEN TICKETS ==========
       // Filter for open tickets only (not closed)
-      const openTicketsOnly = recTickets.filter(t => t.status !== 'fermé')
+      const openTicketsOnly = baseTickets.filter(t => t.status !== 'fermé')
       setOpenTickets(openTicketsOnly)
 
-      // Chart 1: General situation by service and delay (open tickets)
+      // Chart 1: General situation by service and delay (ALL open tickets)
       const serviceDelayGroups = {}
       openTicketsOnly.forEach(ticket => {
         const service = ticket.subscription_type || 'Autre'
@@ -199,23 +291,21 @@ export default function Dashboard() {
         creationDateGroups[date] = (creationDateGroups[date] || 0) + 1
       })
       const sortedDates = Object.entries(creationDateGroups)
-        .sort((a, b) => new Date(a[0]) - new Date(b[0]))
+        .sort((a, b) => new Date(b[0]) - new Date(a[0])) // Sort descending: newest first (right to left)
         .slice(-10) // Last 10 days
       setCreationDateData(sortedDates)
 
-      // Chart 3: Late tickets by number of days late (open late tickets)
-      const lateTickets = openTicketsOnly.filter(t => t.status === 'en_retard')
+      // Chart 3: Tickets by number of days (ALL open tickets)
       const lateByDaysCount = {}
-      lateTickets.forEach(ticket => {
-        // Calculate days from creation to now (or if closed, to close date)
+      openTicketsOnly.forEach(ticket => {
         const createdDate = new Date(ticket.created_at)
-        const referenceDate = ticket.closed_at ? new Date(ticket.closed_at) : new Date()
-        const daysLate = Math.floor((referenceDate - createdDate) / (1000 * 60 * 60 * 24))
+        const now = new Date()
+        const daysLate = Math.floor((now - createdDate) / (1000 * 60 * 60 * 24))
         lateByDaysCount[daysLate] = (lateByDaysCount[daysLate] || 0) + 1
       })
       const sortedByDays = Object.entries(lateByDaysCount)
         .map(([days, count]) => [Number(days), count])
-        .sort((a, b) => b[0] - a[0]) // Sort by days descending (highest to lowest, left to right)
+        .sort((a, b) => b[0] - a[0]) // Sort by days descending (highest to lowest, right to left)
       setLateTicketsByDays(sortedByDays)
 
       // Helper function to map wilaya names to codes
@@ -227,7 +317,7 @@ export default function Dashboard() {
         return mapping[name] || name
       }
 
-      // Chart 4: SAWI tickets by wilaya/region (open tickets)
+      // Chart 4: SAWI tickets by wilaya/region (ALL open SAWI tickets)
       const sawiTickets = openTicketsOnly.filter(t => t.subscription_type === 'SAWI')
       const sawiRegionGroups = {}
       sawiTickets.forEach(ticket => {
@@ -236,7 +326,7 @@ export default function Dashboard() {
       })
       setSawiByRegion(Object.entries(sawiRegionGroups))
 
-      // Chart 5: Late SAWI tickets by wilaya/region (open late tickets)
+      // Chart 5: Late SAWI tickets by wilaya/region (open late tickets with allowed statuses)
       const lateSawiTickets = sawiTickets.filter(t => t.status === 'en_retard')
       const lateSawiRegionGroups = {}
       lateSawiTickets.forEach(ticket => {
@@ -245,7 +335,7 @@ export default function Dashboard() {
       })
       setLateSawiByRegion(Object.entries(lateSawiRegionGroups))
 
-      // Chart 7: SAWI tickets in NKC by zone (open SAWI NKC tickets)
+      // Chart 7: SAWI tickets in NKC by zone (open SAWI NKC tickets with allowed statuses)
       const sawiNkcTickets = sawiTickets.filter(t => t.wilaya_code === 'NKC' || t.wilaya_code === '15')
       const sawiNkcZoneGroups = {}
       sawiNkcTickets.forEach(ticket => {
@@ -254,7 +344,7 @@ export default function Dashboard() {
       })
       setSawiNkcByZone(Object.entries(sawiNkcZoneGroups))
 
-      // Chart 6: Late SAWI tickets in NKC by zone (open late SAWI NKC tickets)
+      // Chart 6: Late SAWI tickets in NKC by zone (open late SAWI NKC tickets with allowed statuses)
       const lateSawiNkcTickets = lateSawiTickets.filter(t => t.wilaya_code === 'NKC' || t.wilaya_code === '15')
       const lateSawiNkcZoneGroups = {}
       lateSawiNkcTickets.forEach(ticket => {
@@ -373,6 +463,18 @@ export default function Dashboard() {
     },
   ]
 
+  const installCards = [
+    { label: 'Total', value: installStats.total, icon: Ticket, color: 'bg-blue-500', statusParam: null },
+    { label: t('dashboard.late') || 'En retard', value: installOverdueCount, icon: AlertCircle, color: 'bg-red-500', statusParam: 'en_retard' },
+    ...INSTALLATION_STATUSES.map(s => ({
+      label: s,
+      value: installStats.byStatus[s] || 0,
+      icon: Clock,
+      color: 'bg-gray-600',
+      statusParam: s
+    }))
+  ]
+
   const wilayaChartData = {
     labels: wilayaData.map(([name]) => name),
     datasets: [{
@@ -417,10 +519,37 @@ export default function Dashboard() {
     )
   }
 
+  class ErrorBoundary extends React.Component {
+    constructor(props) {
+      super(props)
+      this.state = { hasError: false }
+    }
+    static getDerivedStateFromError() {
+      return { hasError: true }
+    }
+    render() {
+      if (this.state.hasError) {
+        return (
+          <div className="p-6 text-center">
+            <p className="text-red-600">Une erreur s'est produite sur le tableau de bord.</p>
+          </div>
+        )
+      }
+      return this.props.children
+    }
+  }
+
   return (
+    <ErrorBoundary>
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
+          {(!location.pathname.includes('reclamation')) && (
+            <>
+              <button onClick={() => setDashboardCategory('reclamation')} className={`px-3 py-1 rounded-full border ${dashboardCategory==='reclamation'?'bg-primary text-white border-primary':'bg-white text-gray-700 border-gray-300'}`}>Réclamations</button>
+              <button onClick={() => setDashboardCategory('installation')} className={`px-3 py-1 rounded-full border ${dashboardCategory==='installation'?'bg-primary text-white border-primary':'bg-white text-gray-700 border-gray-300'}`}>Installations</button>
+            </>
+          )}
           <button onClick={() => setTimeRange('day')} className={`px-3 py-1 rounded-full border ${timeRange==='day'?'bg-primary text-white border-primary':'bg-white text-gray-700 border-gray-300'}`}>Jours</button>
           <button onClick={() => setTimeRange('month')} className={`px-3 py-1 rounded-full border ${timeRange==='month'?'bg-primary text-white border-primary':'bg-white text-gray-700 border-gray-300'}`}>Mois</button>
           <button onClick={() => setTimeRange('year')} className={`px-3 py-1 rounded-full border ${timeRange==='year'?'bg-primary text-white border-primary':'bg-white text-gray-700 border-gray-300'}`}>Année</button>
@@ -430,10 +559,28 @@ export default function Dashboard() {
           <div className="relative w-full max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
             <input
+              ref={searchInputRef}
               type="text"
               value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/tickets?q=${encodeURIComponent(searchInput)}`) }}
+              onChange={(e) => {
+                try {
+                  searchSelectionRef.current.start = e.target.selectionStart || 0
+                  searchSelectionRef.current.end = e.target.selectionEnd || 0
+                } catch (err) {
+                  searchSelectionRef.current.start = searchSelectionRef.current.end = 0
+                }
+                setSearchInput(e.target.value)
+                setTimeout(() => {
+                  try {
+                    const el = searchInputRef.current
+                    if (el) {
+                      el.focus()
+                      el.setSelectionRange(searchSelectionRef.current.start, searchSelectionRef.current.end)
+                    }
+                  } catch (e) {}
+                }, 0)
+              }}
+              onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/tickets?category=${dashboardCategory}&q=${encodeURIComponent(searchInput)}`) }}
               placeholder={t('ticket.search')}
               className="w-full pl-10 pr-10 py-3 rounded-full bg-white shadow border border-gray-200 focus:ring-2 focus:ring-primary focus:outline-none"
             />
@@ -447,7 +594,7 @@ export default function Dashboard() {
             )}
           </div>
           <button
-            onClick={() => navigate(`/tickets?q=${encodeURIComponent(searchInput)}`)}
+            onClick={() => navigate(`/tickets?category=${dashboardCategory}&q=${encodeURIComponent(searchInput)}`)}
             className="px-4 py-2 rounded-full bg-primary text-white hover:bg-primary-dark"
           >
             Rechercher
@@ -458,22 +605,30 @@ export default function Dashboard() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {statCards.map((stat, index) => (
+        {(dashboardCategory === 'installation' ? installCards : statCards).map((stat, index) => (
           <button
             key={index}
             className="bg-white rounded-lg shadow-md p-6 text-left hover:bg-gray-50"
             onClick={() => {
               if (stat.statusParam) {
-                navigate(`/tickets?status=${encodeURIComponent(stat.statusParam)}`)
+                if (dashboardCategory === 'installation') {
+                  if (stat.statusParam === 'en_retard') {
+                    navigate(`/tickets?category=installation&overdue=24`)
+                  } else {
+                    navigate(`/tickets?category=installation&install_status=${encodeURIComponent(stat.statusParam)}`)
+                  }
+                } else {
+                  navigate(`/tickets?category=reclamation&status=${encodeURIComponent(stat.statusParam)}`)
+                }
               } else {
-                navigate('/tickets')
+                navigate(`/tickets?category=${dashboardCategory}`)
               }
             }}
           >
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-gray-600 text-sm">{stat.label}</p>
-                <p className="text-3xl font-bold text-gray-800 mt-2">{stat.value}</p>
+                <p className="text-3xl font-bold text-gray-800 mt-2">{stat.value || 0}</p>
               </div>
               <div className={`${stat.color} p-3 rounded-lg`}>
                 <stat.icon className="text-white" size={24} />
@@ -515,7 +670,6 @@ export default function Dashboard() {
                       {
                         label: 'Total',
                         data: Object.values(serviceDelayData).map(d => d.total),
-                        backgroundColor: '#2563eb',
                       },
                       {
                         label: 'En Retard',
@@ -581,48 +735,8 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Row 2: Chart 3 & 4 */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Chart 3: SAWI NKC by Zone */}
-          <div className="bg-gradient-to-br from-white to-gray-50 rounded-xl shadow-lg hover:shadow-xl transition-shadow p-6 border border-gray-100">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="text-lg font-bold text-gray-900">
-                  Graph 3: SAWI NKC par Zone
-                </h3>
-                <p className="text-xs text-gray-500 mt-1">Répartition par zones de Nouakchott</p>
-              </div>
-              <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                <span className="text-lg">🟦</span>
-              </div>
-            </div>
-            {sawiNkcByZone.length > 0 ? (
-              <div style={{ height: '350px' }}>
-                <Bar
-                  data={{
-                    labels: sawiNkcByZoneSorted.map(([zone]) => zone),
-                    datasets: [{
-                      label: 'Tickets SAWI NKC',
-                      data: sawiNkcByZoneSorted.map(([, count]) => count),
-                      backgroundColor: '#2563eb',
-                    }]
-                  }}
-                  options={{
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                      legend: { position: 'bottom', labels: { font: { size: 11, weight: 500 } } },
-                      valueLabel: { color: '#fff', font: 'bold 11px sans-serif' }
-                    },
-                    scales: { y: { beginAtZero: true, ticks: { stepSize: 1, precision: 0, font: { size: 11 } } } }
-                  }}
-                />
-              </div>
-            ) : (
-              <p className="text-gray-500 text-sm text-center py-8">Aucun ticket SAWI NKC</p>
-            )}
-          </div>
-
+        {/* Row 2: Chart 4 - Late Tickets by Days (directly after Chart 2) */}
+        <div className="grid grid-cols-1 lg:grid-cols-1 gap-6">
           {/* Chart 4: Late Tickets by Days */}
           <div className="bg-gradient-to-br from-white to-gray-50 rounded-xl shadow-lg hover:shadow-xl transition-shadow p-6 border border-gray-100">
             <div className="flex items-center justify-between mb-4">
@@ -664,10 +778,50 @@ export default function Dashboard() {
               <p className="text-gray-500 text-sm text-center py-8">Aucun ticket en retard</p>
             )}
           </div>
-      </div>
+        </div>
 
-      {/* Row 3: Chart 5 & 6 */}
+        {/* Row 3: Chart 3 & 5 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Chart 3: SAWI NKC by Zone */}
+          <div className="bg-gradient-to-br from-white to-gray-50 rounded-xl shadow-lg hover:shadow-xl transition-shadow p-6 border border-gray-100">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">
+                  Graph 3: SAWI NKC par Zone
+                </h3>
+                <p className="text-xs text-gray-500 mt-1">Répartition par zones de Nouakchott</p>
+              </div>
+              <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                <span className="text-lg">🟦</span>
+              </div>
+            </div>
+            {sawiNkcByZone.length > 0 ? (
+              <div style={{ height: '350px' }}>
+                <Bar
+                  data={{
+                    labels: sawiNkcByZoneSorted.map(([zone]) => zone),
+                    datasets: [{
+                      label: 'Tickets SAWI NKC',
+                      data: sawiNkcByZoneSorted.map(([, count]) => count),
+                      backgroundColor: '#2563eb',
+                    }]
+                  }}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                      legend: { position: 'bottom', labels: { font: { size: 11, weight: 500 } } },
+                      valueLabel: { color: '#fff', font: 'bold 11px sans-serif' }
+                    },
+                    scales: { y: { beginAtZero: true, ticks: { stepSize: 1, precision: 0, font: { size: 11 } } } }
+                  }}
+                />
+              </div>
+            ) : (
+              <p className="text-gray-500 text-sm text-center py-8">Aucun ticket SAWI NKC</p>
+            )}
+          </div>
+
           {/* Chart 5: SAWI by Region (Wilaya) */}
           <div className="bg-gradient-to-br from-white to-gray-50 rounded-xl shadow-lg hover:shadow-xl transition-shadow p-6 border border-gray-100">
             <div className="flex items-center justify-between mb-4">
@@ -707,7 +861,10 @@ export default function Dashboard() {
               <p className="text-gray-500 text-sm text-center py-8">Aucun ticket SAWI</p>
             )}
           </div>
+        </div>
 
+        {/* Row 4: Chart 6 */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Chart 6: Late SAWI by Region (Wilaya) */}
           <div className="bg-gradient-to-br from-white to-gray-50 rounded-xl shadow-lg hover:shadow-xl transition-shadow p-6 border border-gray-100">
             <div className="flex items-center justify-between mb-4">
@@ -851,5 +1008,6 @@ export default function Dashboard() {
         </div>
       </div>
     </div>
+    </ErrorBoundary>
   )
 }

@@ -7,6 +7,7 @@ export default function ActivityLogs() {
   const { t } = useTranslation()
   const [logs, setLogs] = useState([])
   const [loading, setLoading] = useState(true)
+  const [errorMessage, setErrorMessage] = useState('')
   const [filters, setFilters] = useState({
     action: '',
     entity_type: '',
@@ -24,6 +25,7 @@ export default function ActivityLogs() {
   const loadLogs = async () => {
     try {
       setLoading(true)
+      setErrorMessage('') // Clear previous error messages
       let query = supabase
         .from('activity_logs')
         .select('*')
@@ -53,6 +55,7 @@ export default function ActivityLogs() {
       setLogs(data || [])
     } catch (error) {
       console.error('Error loading logs:', error)
+      setErrorMessage('Une erreur s\'est produite lors du chargement des journaux.')
     } finally {
       setLoading(false)
     }
@@ -362,8 +365,15 @@ export default function ActivityLogs() {
       <div className="mt-6 text-center text-sm text-gray-500">
         Total: {logs.length} activité(s)
       </div>
+
+      {/* Error Message */}
+      {errorMessage && (
+        <div className="bg-red-100 text-red-800 p-4 rounded-lg mb-4">
+          {errorMessage}
+        </div>
+      )}
     </div>
   )
 }
 
-
+

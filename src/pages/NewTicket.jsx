@@ -205,7 +205,7 @@ export default function NewTicket() {
         }
       }
 
-      if (!error && finalCategory === 'installation' && ticket) {
+      if (!error && category === 'installation' && ticket) {
         await supabase
           .from('tickets')
           .update({ category: 'installation', installation_status: 'matériel', updated_at: new Date().toISOString() })

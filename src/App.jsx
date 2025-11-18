@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import React from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { supabase } from './lib/supabase'
 import Layout from './components/Layout'
@@ -19,16 +20,20 @@ function ProtectedRoute({ children }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Check current session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
-      setLoading(false)
-    })
+    const run = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        setSession(session)
+      } catch (e) {
+        console.error('Auth getSession error:', e)
+      } finally {
+        setLoading(false)
+      }
+    }
+    run()
 
     // Listen for auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session)
     })
 
@@ -51,7 +56,30 @@ function ProtectedRoute({ children }) {
 }
 
 function App() {
+  class ErrorBoundary extends React.Component {
+    constructor(props) {
+      super(props)
+      this.state = { hasError: false }
+    }
+    static getDerivedStateFromError() { return { hasError: true } }
+    componentDidCatch(error, info) { console.error('App error boundary caught:', error, info) }
+    render() {
+      if (this.state.hasError) {
+        return (
+          <div className="min-h-screen flex items-center justify-center">
+            <div className="text-center">
+              <p className="text-red-600">Une erreur s'est produite.</p>
+              <p className="text-gray-500 text-sm">Veuillez rafraîchir la page ou réessayer plus tard.</p>
+            </div>
+          </div>
+        )
+      }
+      return this.props.children
+    }
+  }
+
   return (
+    <ErrorBoundary>
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
@@ -130,6 +158,7 @@ function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
+    </ErrorBoundary>
   )
 }
 

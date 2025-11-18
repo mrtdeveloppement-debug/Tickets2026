@@ -21,6 +21,7 @@ export default function TicketDetails() {
   const [comments, setComments] = useState([])
   const [commentsLoading, setCommentsLoading] = useState(true)
   const location = useLocation()
+  const [installStatusOverride, setInstallStatusOverride] = useState('')
 
   useEffect(() => {
     loadTicket()
@@ -52,6 +53,19 @@ export default function TicketDetails() {
 
       if (error) throw error
       setTicket(data)
+
+      try {
+        const { data: lastInstall } = await supabase
+          .from('ticket_history')
+          .select('to_status')
+          .eq('ticket_id', id)
+          .eq('action', 'installation_status_change')
+          .order('created_at', { ascending: false })
+          .limit(1)
+        if (lastInstall && lastInstall[0]?.to_status) {
+          setInstallStatusOverride(lastInstall[0].to_status)
+        }
+      } catch (_) { void 0 }
     } catch (err) {
       console.error('Error loading ticket:', err)
       setError(err.message)
@@ -193,13 +207,13 @@ export default function TicketDetails() {
     }
   }
 
-  const INSTALLATION_STATUSES = ['matériel','équipe_installation','installé','annulé','injoignable','installation_impossible','optimisation']
+  const INSTALLATION_STATUSES = ['matériel','équipe_installation','installé','annulé','injoignable','installation_impossible','optimisation','extension','manque_de_materiel']
   const getInstallationStatus = (t) => {
+    if (installStatusOverride) return installStatusOverride
     const raw = t.installation_status
     const has = raw && String(raw).trim() !== ''
     if (has) return String(raw)
-    const st = String(t.status || '')
-    return INSTALLATION_STATUSES.includes(st) ? st : 'matériel'
+    return 'matériel'
   }
   const getInstallColor = (s) => {
     switch (s) {
@@ -291,7 +305,7 @@ export default function TicketDetails() {
           
           <div className="space-y-3">
             <div>
-              <label className="text-sm text-gray-500">N° d'abonné</label>
+              <label className="text-sm text-gray-500">N° d&apos;abonné</label>
               <p className="font-medium text-gray-900">{ticket.subscriber_number}</p>
             </div>
             
@@ -332,7 +346,7 @@ export default function TicketDetails() {
           
           <div className="space-y-3">
             <div>
-              <label className="text-sm text-gray-500">Type d'abonnement</label>
+              <label className="text-sm text-gray-500">Type d&apos;abonnement</label>
               <p className="font-medium text-gray-900">{ticket.subscription_type}</p>
             </div>
             

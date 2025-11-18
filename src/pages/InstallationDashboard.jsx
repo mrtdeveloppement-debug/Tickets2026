@@ -31,197 +31,321 @@ export default function InstallationDashboard() {
   const [installSearchInput, setInstallSearchInput] = useState('')
   const ticketsRef = useRef(null)
   const navigate = useNavigate()
+  const [installStatusOverrideById, setInstallStatusOverrideById] = useState({})
+  const [diagnostic, setDiagnostic] = useState({ role: null, totalCount: null, installCount: null, histCount: null, error: null })
   const normalizeKey = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '_')
   const getCount = (k) => statusCounts[k] || 0
 
+  const INSTALLATION_STATUSES = ['matériel','équipe_installation','installé','annulé','injoignable','installation_impossible','optimisation','extension','manque_de_materiel']
+  
+  const mapAllowedToInstallStatus = (status) => {
+    switch (String(status)) {
+      case 'assigné':
+        return 'matériel'
+      case 'en_cours':
+        return 'équipe_installation'
+      case 'fermé':
+        return 'installé'
+      case 'optimisation':
+        return 'optimisation'
+      case 'injoignable':
+        return 'injoignable'
+      default:
+        return 'matériel'
+    }
+  }
+
+  const getInstallationStatus = (t) => {
+    const over = installStatusOverrideById[t.id]
+    if (over) return over
+    const raw = t.installation_status
+    const has = raw && String(raw).trim() !== ''
+    if (has) return String(raw)
+    return mapAllowedToInstallStatus(t.status || '')
+  }
+
+  const filterInstallationTickets = (tickets) => {
+    return tickets.filter(t => {
+      // Inclure si category est explicitement 'installation'
+      if (t.category === 'installation') return true;
+      
+      // Inclure si installation_status est défini et non vide
+      if (t.installation_status && String(t.installation_status).trim() !== '') return true;
+      
+      // Exclure les tickets de réclamation (complaint_type n'est pas null)
+      if (t.complaint_type !== null && t.complaint_type !== undefined) return false;
+      
+      return false;
+    })
+  }
+
+  const isTicketOverdue = (ticket) => {
+    if (!ticket.created_at) return false;
+    
+    // Statuts concernés par le retard
+    const overdueStatuses = ['materiel', 'equipe_installation', 'optimisation', 'manque_de_materiel', 'extension'];
+    const ticketStatus = normalizeKey(getInstallationStatus(ticket));
+    const isRelevantStatus = overdueStatuses.includes(ticketStatus);
+    
+    // Vérifier que le ticket a >= 24h
+    const createdDate = new Date(ticket.created_at);
+    const now = new Date();
+    const hoursElapsed = (now - createdDate) / (1000 * 60 * 60);
+    const isOverdue = hoursElapsed >= 24;
+    
+    // Debug log
+    if (isRelevantStatus && isOverdue) {
+      console.log(`Ticket ${ticket.ticket_number}: Status=${ticketStatus}, Hours=${hoursElapsed.toFixed(2)}, Overdue=${isOverdue}`);
+    }
+    
+    return isRelevantStatus && isOverdue;
+  }
+
   const selectStatus = (status) => {
     setSelectedStatus(prev => (prev === status ? '' : status))
-    navigate(`/tickets?category=installation&install_status=${encodeURIComponent(status)}`)
+    if (status === 'en_retard') {
+      navigate(`/tickets?category=installation&overdue=24`)
+    } else {
+      navigate(`/tickets?category=installation&install_status=${encodeURIComponent(status)}`)
+    }
     if (ticketsRef.current) ticketsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
   const selectOverdue = () => {
-    setSelectedStatus('')
-    navigate(`/tickets?category=installation&overdue=48`)
+    setSelectedStatus('en_retard')
+    navigate(`/tickets?category=installation&overdue=24`)
     if (ticketsRef.current) ticketsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   useEffect(() => {
     const loadData = async () => {
       try {
-        const currentDate = new Date()
-        const from = new Date(currentDate)
-        if (timeRange === 'day') from.setDate(currentDate.getDate() - 1)
-        else if (timeRange === 'month') from.setMonth(currentDate.getMonth() - 1)
-        else if (timeRange === 'year') from.setFullYear(currentDate.getFullYear() - 1)
-        const fromIso = from.toISOString()
-        await supabase
-          .from('tickets')
-          .update({ category: 'installation' })
-          .is('category', null)
-          .is('complaint_type', null)
+        console.log('Début du chargement des données...');
 
-        await supabase
-          .from('tickets')
-          .update({ category: 'reclamation' })
-          .is('category', null)
-          .not('complaint_type', 'is', null)
-        
-        await supabase
-          .from('tickets')
-          .update({ category: 'installation' })
-          .is('category', null)
-          .not('installation_status', 'is', null)
-
-        // Cleanup: recategorize any ticket with installation_status set but wrong category
-        await supabase
-          .from('tickets')
-          .update({ category: 'installation' })
-          .not('installation_status', 'is', null)
-          .neq('category', 'installation')
-        await supabase
-          .from('tickets')
-          .update({ installation_status: 'matériel', updated_at: new Date().toISOString() })
-          .eq('category', 'installation')
-          .or("installation_status.is.null,installation_status.eq.''")
-
-        await supabase
-          .from('tickets')
-          .update({ installation_status: null, updated_at: new Date().toISOString() })
-          .eq('category', 'reclamation')
-          .not('installation_status', 'is', null)
         let query = supabase
           .from('tickets')
           .select('*, wilayas(name_fr), regions(name_fr)')
-          .order('created_at', { ascending: false })
+          .order('created_at', { ascending: false });
+
         if (timeRange !== 'all') {
-          query = query.gte('created_at', fromIso)
+          const currentDate = new Date();
+          const from = new Date(currentDate);
+          if (timeRange === 'day') from.setDate(currentDate.getDate() - 1);
+          else if (timeRange === 'month') from.setMonth(currentDate.getMonth() - 1);
+          else if (timeRange === 'year') from.setFullYear(currentDate.getFullYear() - 1);
+          const fromIso = from.toISOString();
+          query = query.gte('created_at', fromIso);
         }
-        const { data, error } = await query
 
-        if (error) throw error
-        const loaded = data || []
-        const allInstallation = loaded.filter(t => (
-          t.category === 'installation' ||
-          (!!t.installation_status && String(t.installation_status).trim() !== '') ||
-          t.complaint_type == null
-        ))
-        const needInit = allInstallation.filter(t => (!t.installation_status || String(t.installation_status).trim() === ''))
-        if (needInit.length > 0) {
-          await supabase
-            .from('tickets')
-            .update({ installation_status: 'matériel', updated_at: new Date().toISOString() })
-            .in('id', needInit.map(t => t.id))
+        const { data, error } = await query;
+        if (error) {
+          console.error('Erreur lors de la requête Supabase:', error);
+          return;
         }
+
+        console.log('Données brutes récupérées depuis Supabase:', data);
+
+        const loaded = data || [];
+        console.log('Nombre de tickets chargés:', loaded.length);
+
+        const allInstallation = filterInstallationTickets(loaded);
+
+        console.log('Tickets filtrés pour installation:', allInstallation);
+
         const normalized = allInstallation.map(t => {
-          const inst = getInstallationStatus(t)
-          return { ...t, installation_status: inst }
-        })
-        setInstallationTickets(normalized)
+          const inst = getInstallationStatus(t);
+          return { ...t, installation_status: inst };
+        });
 
-        const allInstallationNormalized = normalized
-        const openTickets = allInstallationNormalized.filter(t => t.installation_status !== 'installé' && t.installation_status !== 'annulé')
+        console.log('Tickets normalisés:', normalized);
 
-        const serviceGroups = {}
-        openTickets.forEach(ticket => {
-          const s = ticket.subscription_type || 'Autre'
-          if (!serviceGroups[s]) serviceGroups[s] = { total: 0, late: 0 }
-          serviceGroups[s].total++
-          const createdDate = new Date(ticket.created_at)
-          const days = Math.floor((new Date() - createdDate) / (1000 * 60 * 60 * 24))
-          if (days >= 1) serviceGroups[s].late++
-        })
-        setServiceDelayData(serviceGroups)
+        setInstallationTickets(normalized);
 
-        const counts = {}
+        const counts = {};
+        const statusBreakdown = {};
+        
         normalized.forEach(t => {
-          const s = normalizeKey(getInstallationStatus(t))
-          counts[s] = (counts[s] || 0) + 1
-        })
-        setStatusCounts(counts)
-
-        const lateByDaysCount = {}
-        let overdue48Count = 0
-        openTickets.forEach(ticket => {
-          const createdDate = new Date(ticket.created_at)
-          const days = Math.floor((new Date() - createdDate) / (1000 * 60 * 60 * 24))
-          lateByDaysCount[days] = (lateByDaysCount[days] || 0) + 1
-          const hours = Math.floor((new Date() - createdDate) / (1000 * 60 * 60))
-          const inst = getInstallationStatus(ticket)
-          if (hours >= 48 && (
-            inst === 'matériel' ||
-            inst === 'équipe_installation' ||
-            inst === 'optimisation' ||
-            inst === 'extension'
-          )) {
-            overdue48Count++
+          const statusKey = normalizeKey(getInstallationStatus(t));
+          counts[statusKey] = (counts[statusKey] || 0) + 1;
+          
+          if (!statusBreakdown[statusKey]) {
+            statusBreakdown[statusKey] = [];
           }
-        })
-        const lateDaysArr = Object.entries(lateByDaysCount)
-          .map(([d, c]) => [Number(d), c])
-          .sort((a, b) => b[1] - a[1])
-        setLateByDays(lateDaysArr)
+          statusBreakdown[statusKey].push(t.ticket_number);
+        });
 
-        const sawiTickets = openTickets.filter(t => t.subscription_type === 'SAWI')
-        const sawiRegionGroups = {}
-        sawiTickets.forEach(ticket => {
-          const wilaya = ticket.wilayas?.name_fr || ticket.wilaya_code || 'Non spécifié'
-          sawiRegionGroups[wilaya] = (sawiRegionGroups[wilaya] || 0) + 1
-        })
-        setSawiByRegion(Object.entries(sawiRegionGroups))
+        // Compter les tickets en retard (>= 24h)
+        const overdueTickets = normalized.filter(t => isTicketOverdue(t));
+        counts['overdue24'] = overdueTickets.length;
 
-        const lateSawiRegionGroups = {}
-        sawiTickets.forEach(ticket => {
-          const createdDate = new Date(ticket.created_at)
-          const days = Math.floor((new Date() - createdDate) / (1000 * 60 * 60 * 24))
-          if (days >= 1) {
-            const wilaya = ticket.wilayas?.name_fr || ticket.wilaya_code || 'Non spécifié'
-            lateSawiRegionGroups[wilaya] = (lateSawiRegionGroups[wilaya] || 0) + 1
-          }
-        })
-        setLateSawiByRegion(Object.entries(lateSawiRegionGroups))
-        setStatusCounts(prev => ({ ...prev, overdue48: overdue48Count }))
+        // Update the total count to match the filtered tickets
+        const totalCount = normalized.length;
+        setStatusCounts({ ...counts, total: totalCount });
 
-        const now = Date.now()
-        for (const t of allInstallation) {
-          const created = new Date(t.created_at).getTime()
-          const hours = Math.floor((now - created) / (1000 * 60 * 60))
-          let apply = false
-          let toStatus = t.status
-          let note = ''
-          if (t.installation_status === 'matériel' && hours >= 48 && t.status !== 'en_retard') {
-            apply = true
-            toStatus = 'en_retard'
-            note = 'retard matériel (>48h)'
-          } else if (t.installation_status === 'matériel' && hours >= 24 && (!t.notes || !t.notes.includes('retard matériel'))) {
-            apply = true
-            note = 'retard matériel (>24h)'
-          } else if (t.installation_status === 'équipe_installation' && hours >= 48 && t.status !== 'en_retard') {
-            apply = true
-            toStatus = 'en_retard'
-            note = 'retard installation (>48h)'
-          }
-          if (apply) {
-            await supabase
-              .from('tickets')
-              .update({
-                status: toStatus,
-                notes: t.notes ? `${t.notes}\n${note}` : note,
-                updated_at: new Date().toISOString()
-              })
-              .eq('id', t.id)
-          }
-        }
+        console.log('Total tickets installation:', normalized.length);
+        console.log('Statuts comptés avec tickets en retard:', counts);
+        console.log('Détails par statut:', statusBreakdown);
+        console.log('Tickets en retard trouvés:', overdueTickets.length);
+        console.log('Numéros de tickets en retard:', overdueTickets.map(t => ({
+          number: t.ticket_number,
+          status: getInstallationStatus(t),
+          created: t.created_at,
+          hoursElapsed: (new Date() - new Date(t.created_at)) / (1000 * 60 * 60)
+        })));
+
+        setStatusCounts(counts);
+
+        console.log('Chargement des données terminé.');
+
       } catch (e) {
-        console.error('Error loading installation dashboard:', e)
+        console.error('Erreur lors du chargement des données:', e);
       } finally {
-        setLoading(false)
+        setLoading(false);
+      }
+    };
+    loadData();
+  }, [timeRange])
+
+  useEffect(() => {
+    const runDiagnosis = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        let role = null
+        if (user?.id) {
+          const { data: u } = await supabase
+            .from('users')
+            .select('role')
+            .eq('id', user.id)
+            .limit(1)
+            .maybeSingle()
+          role = u?.role || null
+        }
+        const { count: totalCount } = await supabase
+          .from('tickets')
+          .select('id', { count: 'exact', head: true })
+        const { count: installCount } = await supabase
+          .from('tickets')
+          .select('id', { count: 'exact', head: true })
+          .or('installation_status.not.is.null,complaint_type.is.null')
+        const { count: histCount } = await supabase
+          .from('ticket_history')
+          .select('ticket_id', { count: 'exact', head: true })
+          .eq('action', 'installation_status_change')
+        setDiagnostic({ role, totalCount: totalCount ?? 0, installCount: installCount ?? 0, histCount: histCount ?? 0, error: null })
+      } catch (e) {
+        setDiagnostic(prev => ({ ...prev, error: String(e?.message || 'Erreur inconnue') }))
       }
     }
-    loadData()
-  }, [timeRange])
+    runDiagnosis()
+  }, [])
 
   const sawiByRegionSorted = [...sawiByRegion].sort((a, b) => b[1] - a[1])
   const lateSawiByRegionSorted = [...lateSawiByRegion].sort((a, b) => b[1] - a[1])
+
+  useEffect(() => {
+    console.log('Données des tickets d\'installation:', installationTickets);
+    console.log('Comptes des statuts:', statusCounts);
+  }, [installationTickets, statusCounts]);
+
+  useEffect(() => {
+    const loadGraphData = async () => {
+      try {
+        let query = supabase
+          .from('tickets')
+          .select('*, wilayas(name_fr), regions(name_fr)')
+          .order('created_at', { ascending: false });
+
+        if (timeRange !== 'all') {
+          const currentDate = new Date();
+          const from = new Date(currentDate);
+          if (timeRange === 'day') from.setDate(currentDate.getDate() - 1);
+          else if (timeRange === 'month') from.setMonth(currentDate.getMonth() - 1);
+          else if (timeRange === 'year') from.setFullYear(currentDate.getFullYear() - 1);
+          const fromIso = from.toISOString();
+          query = query.gte('created_at', fromIso);
+        }
+
+        const { data } = await query;
+        const allTickets = data || [];
+        
+        console.log('Total de tickets bruts:', allTickets.length);
+        console.log('Répartition - Installation:', allTickets.filter(t => t.category === 'installation').length);
+        console.log('Répartition - Réclamation:', allTickets.filter(t => t.category === 'reclamation').length);
+        console.log('Répartition - Autre/null:', allTickets.filter(t => !t.category || (t.category !== 'installation' && t.category !== 'reclamation')).length);
+        
+        // Utiliser la même logique de filtrage que pour les icônes
+        const installationTicketsForGraphs = filterInstallationTickets(allTickets);
+
+        console.log('Tickets installation après filtrage pour graphes:', installationTicketsForGraphs.length);
+        console.log('Numéros de tickets installation:', installationTicketsForGraphs.map(t => t.ticket_number));
+
+        // Graph 1: Service et Retard (installation uniquement - statuts autorisés)
+        const allowedInstallStatuses = ['materiel', 'equipe_installation', 'extension', 'optimisation', 'manque_de_materiel', 'injoignable'];
+        const serviceDelayMap = {};
+        installationTicketsForGraphs.forEach(t => {
+          const ticketStatus = normalizeKey(getInstallationStatus(t));
+          if (allowedInstallStatuses.includes(ticketStatus)) {
+            const service = t.subscription_type || 'Autres';
+            if (!serviceDelayMap[service]) {
+              serviceDelayMap[service] = { total: 0, late: 0 };
+            }
+            serviceDelayMap[service].total++;
+            if (isTicketOverdue(t)) {
+              serviceDelayMap[service].late++;
+            }
+          }
+        });
+        setServiceDelayData(serviceDelayMap);
+
+        // Graph 2: Tickets par jours (installation uniquement - tickets avec statuts autorisés)
+        const lateTicketsMap = {};
+        const allTicketsList = [];
+        installationTicketsForGraphs.forEach(t => {
+          const ticketStatus = normalizeKey(getInstallationStatus(t));
+          if (allowedInstallStatuses.includes(ticketStatus) && t.created_at) {
+            const createdDate = new Date(t.created_at);
+            const now = new Date();
+            const daysLate = Math.floor((now - createdDate) / (1000 * 60 * 60 * 24));
+            lateTicketsMap[daysLate] = (lateTicketsMap[daysLate] || 0) + 1;
+            allTicketsList.push({ ticket_number: t.ticket_number, status: getInstallationStatus(t), daysLate });
+          }
+        });
+        console.log('Installation Tickets by Days (Graph 2):', {
+          total: allTicketsList.length,
+          byDays: lateTicketsMap,
+          tickets: allTicketsList
+        });
+        const sortedByDays = Object.entries(lateTicketsMap)
+          .map(([days, count]) => [Number(days), count])
+          .sort((a, b) => b[0] - a[0]); // Sort descending (right to left: highest days first)
+        setLateByDays(sortedByDays);
+
+        // Graph 3: SAWI par Région (installation uniquement - statuts autorisés)
+        const sawiRegionMap = {};
+        installationTicketsForGraphs.filter(t => {
+          const ticketStatus = normalizeKey(getInstallationStatus(t));
+          return t.subscription_type === 'SAWI' && allowedInstallStatuses.includes(ticketStatus);
+        }).forEach(t => {
+          const region = t.regions?.name_fr || t.wilaya_code || 'Non spécifié';
+          sawiRegionMap[region] = (sawiRegionMap[region] || 0) + 1;
+        });
+        setSawiByRegion(Object.entries(sawiRegionMap));
+
+        // Graph 4: SAWI en Retard par Région (installation uniquement - statuts autorisés)
+        const lateSawiRegionMap = {};
+        installationTicketsForGraphs.filter(t => {
+          const ticketStatus = normalizeKey(getInstallationStatus(t));
+          return t.subscription_type === 'SAWI' && isTicketOverdue(t) && allowedInstallStatuses.includes(ticketStatus);
+        }).forEach(t => {
+          const region = t.regions?.name_fr || t.wilaya_code || 'Non spécifié';
+          lateSawiRegionMap[region] = (lateSawiRegionMap[region] || 0) + 1;
+        });
+        setLateSawiByRegion(Object.entries(lateSawiRegionMap));
+      } catch (error) {
+        console.error('Erreur lors du chargement des données des graphes:', error);
+      }
+    };
+    loadGraphData();
+  }, [timeRange]);
 
   if (loading) {
     return (
@@ -248,7 +372,12 @@ export default function InstallationDashboard() {
               type="text"
               value={installSearchInput}
               onChange={(e) => setInstallSearchInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/tickets?category=installation&q=${encodeURIComponent(installSearchInput)}`) }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  setInstallSearch(installSearchInput)
+                  navigate(`/tickets?category=installation&q=${encodeURIComponent(installSearchInput)}`)
+                }
+              }}
               placeholder="Rechercher..."
               className="w-full pl-10 pr-10 py-3 rounded-full bg-white shadow border border-gray-200 focus:ring-2 focus:ring-primary focus:outline-none"
             />
@@ -262,7 +391,7 @@ export default function InstallationDashboard() {
             )}
           </div>
           <button
-            onClick={() => navigate(`/tickets?category=installation&q=${encodeURIComponent(installSearchInput)}`)}
+            onClick={() => { setInstallSearch(installSearchInput); navigate(`/tickets?category=installation&q=${encodeURIComponent(installSearchInput)}`) }}
             className="px-4 py-2 rounded-full bg-primary text-white hover:bg-primary-dark"
           >
             Rechercher
@@ -271,98 +400,100 @@ export default function InstallationDashboard() {
       </div>
 
       {/* Statuts Installation - 7 icônes + En retard ≥48h */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between cursor-pointer" onClick={() => selectStatus('matériel')}>
-          <div>
-            <div className="text-sm text-gray-500">Matériel</div>
-            <div className="text-2xl font-bold">{getCount('materiel')}</div>
+      {installationTickets.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between cursor-pointer" onClick={() => selectStatus('matériel')}>
+            <div>
+              <div className="text-sm text-gray-500">Matériel</div>
+              <div className="text-2xl font-bold">{getCount('materiel')}</div>
+            </div>
+            <button className={`p-3 bg-blue-600 rounded-lg flex items-center justify-center ${selectedStatus==='matériel'?'ring-2 ring-blue-400':''}`}>
+              <Wrench className="text-white" size={24} />
+            </button>
           </div>
-          <button className={`p-3 bg-blue-600 rounded-lg flex items-center justify-center ${selectedStatus==='matériel'?'ring-2 ring-blue-400':''}`}>
-            <Wrench className="text-white" size={24} />
-          </button>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between cursor-pointer" onClick={() => selectStatus('équipe_installation')}>
-          <div>
-            <div className="text-sm text-gray-500">Équipe installation</div>
-            <div className="text-2xl font-bold">{getCount('equipe_installation')}</div>
+          <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between cursor-pointer" onClick={() => selectStatus('équipe_installation')}>
+            <div>
+              <div className="text-sm text-gray-500">Équipe installation</div>
+              <div className="text-2xl font-bold">{getCount('equipe_installation')}</div>
+            </div>
+            <button className={`p-3 bg-indigo-600 rounded-lg flex items-center justify-center ${selectedStatus==='équipe_installation'?'ring-2 ring-indigo-400':''}`}>
+              <Users className="text-white" size={24} />
+            </button>
           </div>
-          <button className={`p-3 bg-indigo-600 rounded-lg flex items-center justify-center ${selectedStatus==='équipe_installation'?'ring-2 ring-indigo-400':''}`}>
-            <Users className="text-white" size={24} />
-          </button>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between cursor-pointer" onClick={selectOverdue}>
-          <div>
-            <div className="text-sm text-gray-500">En retard (≥48h)</div>
-            <div className="text-2xl font-bold">{getCount('overdue48')}</div>
+          <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between cursor-pointer" onClick={selectOverdue}>
+            <div>
+              <div className="text-sm text-gray-500">En retard (≥24h)</div>
+              <div className="text-2xl font-bold">{getCount('overdue24')}</div>
+            </div>
+            <button className={`p-3 bg-red-600 rounded-lg flex items-center justify-center ${selectedStatus==='en_retard'?'ring-2 ring-red-400':''}`}>
+              <Clock className="text-white" size={24} />
+            </button>
           </div>
-          <button className={`p-3 bg-red-600 rounded-lg flex items-center justify-center`}>
-            <Clock className="text-white" size={24} />
-          </button>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between cursor-pointer" onClick={() => selectStatus('installé')}>
-          <div>
-            <div className="text-sm text-gray-500">Installé</div>
-            <div className="text-2xl font-bold">{getCount('installe')}</div>
+          <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between cursor-pointer" onClick={() => selectStatus('installé')}>
+            <div>
+              <div className="text-sm text-gray-500">Installé</div>
+              <div className="text-2xl font-bold">{getCount('installe')}</div>
+            </div>
+            <button className={`p-3 bg-green-600 rounded-lg flex items-center justify-center ${selectedStatus==='installé'?'ring-2 ring-green-400':''}`}>
+              <CheckCircle2 className="text-white" size={24} />
+            </button>
           </div>
-          <button className={`p-3 bg-green-600 rounded-lg flex items-center justify-center ${selectedStatus==='installé'?'ring-2 ring-green-400':''}`}>
-            <CheckCircle2 className="text-white" size={24} />
-          </button>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between cursor-pointer" onClick={() => selectStatus('annulé')}>
-          <div>
-            <div className="text-sm text-gray-500">Annulé</div>
-            <div className="text-2xl font-bold">{getCount('annule')}</div>
+          <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between cursor-pointer" onClick={() => selectStatus('annulé')}>
+            <div>
+              <div className="text-sm text-gray-500">Annulé</div>
+              <div className="text-2xl font-bold">{getCount('annule')}</div>
+            </div>
+            <button className={`p-3 bg-orange-600 rounded-lg flex items-center justify-center ${selectedStatus==='annulé'?'ring-2 ring-orange-400':''}`}>
+              <XCircle className="text-white" size={24} />
+            </button>
           </div>
-          <button className={`p-3 bg-orange-600 rounded-lg flex items-center justify-center ${selectedStatus==='annulé'?'ring-2 ring-orange-400':''}`}>
-            <XCircle className="text-white" size={24} />
-          </button>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between cursor-pointer" onClick={() => selectStatus('injoignable')}>
-          <div>
-            <div className="text-sm text-gray-500">Injoignable</div>
-            <div className="text-2xl font-bold">{getCount('injoignable')}</div>
+          <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between cursor-pointer" onClick={() => selectStatus('injoignable')}>
+            <div>
+              <div className="text-sm text-gray-500">Injoignable</div>
+              <div className="text-2xl font-bold">{getCount('injoignable')}</div>
+            </div>
+            <button className={`p-3 bg-yellow-600 rounded-lg flex items-center justify-center ${selectedStatus==='injoignable'?'ring-2 ring-yellow-400':''}`}>
+              <PhoneOff className="text-white" size={24} />
+            </button>
           </div>
-          <button className={`p-3 bg-yellow-600 rounded-lg flex items-center justify-center ${selectedStatus==='injoignable'?'ring-2 ring-yellow-400':''}`}>
-            <PhoneOff className="text-white" size={24} />
-          </button>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between cursor-pointer" onClick={() => selectStatus('installation_impossible')}>
-          <div>
-            <div className="text-sm text-gray-500">Installation Impossible</div>
-            <div className="text-2xl font-bold">{getCount('installation_impossible')}</div>
+          <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between cursor-pointer" onClick={() => selectStatus('installation_impossible')}>
+            <div>
+              <div className="text-sm text-gray-500">Installation Impossible</div>
+              <div className="text-2xl font-bold">{getCount('installation_impossible')}</div>
+            </div>
+            <button className={`p-3 bg-red-600 rounded-lg flex items-center justify-center ${selectedStatus==='installation_impossible'?'ring-2 ring-red-400':''}`}>
+              <Ban className="text-white" size={24} />
+            </button>
           </div>
-          <button className={`p-3 bg-red-600 rounded-lg flex items-center justify-center ${selectedStatus==='installation_impossible'?'ring-2 ring-red-400':''}`}>
-            <Ban className="text-white" size={24} />
-          </button>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between cursor-pointer" onClick={() => selectStatus('optimisation')}>
-          <div>
-            <div className="text-sm text-gray-500">Optimisation</div>
-            <div className="text-2xl font-bold">{getCount('optimisation')}</div>
+          <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between cursor-pointer" onClick={() => selectStatus('optimisation')}>
+            <div>
+              <div className="text-sm text-gray-500">Optimisation</div>
+              <div className="text-2xl font-bold">{getCount('optimisation')}</div>
+            </div>
+            <button className={`p-3 bg-purple-600 rounded-lg flex items-center justify-center ${selectedStatus==='optimisation'?'ring-2 ring-purple-400':''}`}>
+              <Settings className="text-white" size={24} />
+            </button>
           </div>
-          <button className={`p-3 bg-purple-600 rounded-lg flex items-center justify-center ${selectedStatus==='optimisation'?'ring-2 ring-purple-400':''}`}>
-            <Settings className="text-white" size={24} />
-          </button>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between cursor-pointer" onClick={() => selectStatus('manque_de_materiel')}>
-          <div>
-            <div className="text-sm text-gray-500">Manque de matériel</div>
-            <div className="text-2xl font-bold">{getCount('manque_de_materiel')}</div>
+          <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between cursor-pointer" onClick={() => selectStatus('manque_de_materiel')}>
+            <div>
+              <div className="text-sm text-gray-500">Manque de matériel</div>
+              <div className="text-2xl font-bold">{getCount('manque_de_materiel')}</div>
+            </div>
+            <button className={`p-3 bg-rose-600 rounded-lg flex items-center justify-center ${selectedStatus==='manque_de_materiel'?'ring-2 ring-rose-400':''}`}>
+              <PackageOpen className="text-white" size={24} />
+            </button>
           </div>
-          <button className={`p-3 bg-rose-600 rounded-lg flex items-center justify-center ${selectedStatus==='manque_de_materiel'?'ring-2 ring-rose-400':''}`}>
-            <PackageOpen className="text-white" size={24} />
-          </button>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between cursor-pointer" onClick={() => selectStatus('extension')}>
-          <div>
-            <div className="text-sm text-gray-500">Extension</div>
-            <div className="text-2xl font-bold">{getCount('extension')}</div>
+          <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between cursor-pointer" onClick={() => selectStatus('extension')}>
+            <div>
+              <div className="text-sm text-gray-500">Extension</div>
+              <div className="text-2xl font-bold">{getCount('extension')}</div>
+            </div>
+            <button className={`p-3 bg-teal-600 rounded-lg flex items-center justify-center ${selectedStatus==='extension'?'ring-2 ring-teal-400':''}`}>
+              <GitBranch className="text-white" size={24} />
+            </button>
           </div>
-          <button className={`p-3 bg-teal-600 rounded-lg flex items-center justify-center ${selectedStatus==='extension'?'ring-2 ring-teal-400':''}`}>
-            <GitBranch className="text-white" size={24} />
-          </button>
         </div>
-      </div>
+      )}
 
       
   
@@ -371,34 +502,71 @@ export default function InstallationDashboard() {
         {/* Graph 1: Situation par Service et Retard */}
         <div className="bg-white rounded-lg shadow-md p-6">
           <h3 className="text-lg font-bold text-gray-900 mb-4">Graph 1: Situation par Service et Retard</h3>
-          {Object.keys(serviceDelayData).length > 0 ? (
-            <div style={{ height: '350px' }}>
-              <Bar
-                data={{
-                  labels: Object.keys(serviceDelayData),
-                  datasets: [
-                    {
-                      label: 'Total',
-                      data: Object.values(serviceDelayData).map(d => d.total),
-                      backgroundColor: '#2563eb',
-                    },
-                    {
-                      label: 'En Retard',
-                      data: Object.values(serviceDelayData).map(d => d.late),
-                      backgroundColor: '#ef4444',
-                    }
-                  ]
-                }}
-                options={{
-                  responsive: true,
-                  maintainAspectRatio: false,
-                  plugins: { legend: { position: 'bottom' } },
-                }}
-              />
-            </div>
-          ) : (
-            <p className="text-gray-500 text-sm">Aucune donnée disponible</p>
-          )}
+        {Object.keys(serviceDelayData).length > 0 ? (
+          <div style={{ height: '350px' }}>
+            {(() => {
+              const sds = serviceDelayData || {}
+              const totalTickets = Object.values(sds).reduce((acc, d) => acc + (d?.total || 0), 0)
+              const totalLate = Object.values(sds).reduce((acc, d) => acc + (d?.late || 0), 0)
+              const sawiTotal = sds['SAWI']?.total || 0
+              const sawiLate = sds['SAWI']?.late || 0
+              const ftthTotal = sds['FTTH']?.total || 0
+              const ftthLate = sds['FTTH']?.late || 0
+              const blrTotal = sds['BLR']?.total || 0
+              const blrLate = sds['BLR']?.late || 0
+              const labels = [
+                'Total tickets',
+                'Total En Retard',
+                'SAWI',
+                'En Retard',
+                'FTTH',
+                'En Retard',
+                'BLR',
+                'En Retard'
+              ]
+              const dataPoints = [
+                totalTickets,
+                totalLate,
+                sawiTotal,
+                sawiLate,
+                ftthTotal,
+                ftthLate,
+                blrTotal,
+                blrLate
+              ]
+              const colors = [
+                '#2563eb',
+                '#ef4444',
+                '#2563eb',
+                '#ef4444',
+                '#2563eb',
+                '#ef4444',
+                '#2563eb',
+                '#ef4444'
+              ]
+              return (
+                <Bar
+                  data={{
+                    labels,
+                    datasets: [{
+                      label: 'Nombre',
+                      data: dataPoints,
+                      backgroundColor: colors
+                    }]
+                  }}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true, ticks: { stepSize: 1, precision: 0 } } }
+                  }}
+                />
+              )
+            })()}
+          </div>
+        ) : (
+          <p className="text-gray-500 text-sm">Aucune donnée disponible</p>
+        )}
         </div>
 
         {/* Graph 2: Tickets en Retard par Jours */}
@@ -508,23 +676,32 @@ export default function InstallationDashboard() {
                     ))
                   : base
                 const limited = selectedStatus ? filtered : filtered.slice(0, 10)
-                return limited.map(t => (
-                  <tr key={t.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 text-sm font-medium text-primary">{t.ticket_number}</td>
-                    <td className="px-6 py-4 text-sm text-gray-900">{t.subscriber_number}</td>
-                    <td className="px-6 py-4 text-sm text-gray-900">{t.phone}</td>
-                    <td className="px-6 py-4 text-sm text-gray-500">{t.wilayas?.name_fr || t.wilaya_code}</td>
-                    <td className="px-6 py-4 text-sm text-gray-500">{t.regions?.name_fr || '-'}</td>
-                    <td className="px-6 py-4 text-sm text-gray-500">{t.subscription_type}</td>
-                    <td className="px-6 py-4 text-sm text-gray-500">{getInstallationStatus(t) || '-'}</td>
-                  </tr>
-                ))
+                return (
+                  <>
+                    {limited.map(t => (
+                      <tr key={t.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 text-sm font-medium text-primary">{t.ticket_number}</td>
+                        <td className="px-6 py-4 text-sm text-gray-900">{t.subscriber_number}</td>
+                        <td className="px-6 py-4 text-sm text-gray-900">{t.phone}</td>
+                        <td className="px-6 py-4 text-sm text-gray-500">{t.wilayas?.name_fr || t.wilaya_code}</td>
+                        <td className="px-6 py-4 text-sm text-gray-500">{t.regions?.name_fr || '-'}</td>
+                        <td className="px-6 py-4 text-sm text-gray-500">{t.subscription_type}</td>
+                        <td className="px-6 py-4 text-sm text-gray-500">{getInstallationStatus(t) || '-'}</td>
+                      </tr>
+                    ))}
+                    {installationTickets.length === 0 ? (
+                      <tr>
+                        <td className="px-6 py-4 text-center text-sm text-gray-500" colSpan="7">Aucun ticket d&apos;installation</td>
+                      </tr>
+                    ) : limited.length > 0 ? (
+                      <tr className="bg-gray-100 font-bold">
+                        <td className="px-6 py-4 text-sm" colSpan="6">Total</td>
+                        <td className="px-6 py-4 text-sm">{filtered.length}</td>
+                      </tr>
+                    ) : null}
+                  </>
+                )
               })()}
-              {installationTickets.length === 0 && (
-                <tr>
-                  <td className="px-6 py-4 text-center text-sm text-gray-500" colSpan="7">Aucun ticket d&apos;installation</td>
-                </tr>
-              )}
             </tbody>
           </table>
         </div>
@@ -532,26 +709,3 @@ export default function InstallationDashboard() {
     </div>
   )
 }
-  const INSTALLATION_STATUSES = ['matériel','équipe_installation','installé','annulé','injoignable','installation_impossible','optimisation','extension','manque_de_materiel']
-  const mapAllowedToInstallStatus = (status) => {
-    switch (String(status)) {
-      case 'assigné':
-        return 'matériel'
-      case 'en_cours':
-        return 'équipe_installation'
-      case 'fermé':
-        return 'installé'
-      case 'optimisation':
-        return 'optimisation'
-      case 'injoignable':
-        return 'injoignable'
-      default:
-        return 'matériel'
-    }
-  }
-  const getInstallationStatus = (t) => {
-    const raw = t.installation_status
-    const has = raw && String(raw).trim() !== ''
-    if (has) return String(raw)
-    return mapAllowedToInstallStatus(t.status || '')
-  }
