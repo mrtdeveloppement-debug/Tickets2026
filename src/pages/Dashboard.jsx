@@ -25,6 +25,7 @@ import {
   Legend,
 } from 'chart.js'
 import { Bar, Pie } from 'react-chartjs-2'
+import { formatTicketWilaya, isTicketInNouakchott } from '../utils/location'
 
 ChartJS.register(
   CategoryScale,
@@ -225,14 +226,14 @@ export default function Dashboard() {
 
       // Group by wilaya
       const wilayaGroups = baseTickets.reduce((acc, ticket) => {
-        const wilaya = ticket.wilayas?.name_fr || ticket.wilaya_code
+        const wilaya = formatTicketWilaya(ticket)
         acc[wilaya] = (acc[wilaya] || 0) + 1
         return acc
       }, {})
       setWilayaData(Object.entries(wilayaGroups))
 
       // Group by region (Nouakchott only) — accept both 'NKC' and '15'
-      const nkcTickets = baseTickets.filter(t => t.wilaya_code === 'NKC' || t.wilaya_code === '15')
+      const nkcTickets = baseTickets.filter(isTicketInNouakchott)
       const regionGroups = nkcTickets.reduce((acc, ticket) => {
         const region = ticket.regions?.name_fr || 'Non spécifié'
         acc[region] = (acc[region] || 0) + 1
@@ -308,20 +309,11 @@ export default function Dashboard() {
         .sort((a, b) => b[0] - a[0]) // Sort by days descending (highest to lowest, right to left)
       setLateTicketsByDays(sortedByDays)
 
-      // Helper function to map wilaya names to codes
-      const mapWilayaName = (name) => {
-        const mapping = {
-          'Nouakchott': 'NKC',
-          'Nouadhibou': 'NDB'
-        }
-        return mapping[name] || name
-      }
-
       // Chart 4: SAWI tickets by wilaya/region (ALL open SAWI tickets)
       const sawiTickets = openTicketsOnly.filter(t => t.subscription_type === 'SAWI')
       const sawiRegionGroups = {}
       sawiTickets.forEach(ticket => {
-        const wilaya = mapWilayaName(ticket.wilayas?.name_fr || ticket.wilaya_code || 'Non spécifié')
+        const wilaya = formatTicketWilaya(ticket)
         sawiRegionGroups[wilaya] = (sawiRegionGroups[wilaya] || 0) + 1
       })
       setSawiByRegion(Object.entries(sawiRegionGroups))
@@ -330,13 +322,13 @@ export default function Dashboard() {
       const lateSawiTickets = sawiTickets.filter(t => t.status === 'en_retard')
       const lateSawiRegionGroups = {}
       lateSawiTickets.forEach(ticket => {
-        const wilaya = mapWilayaName(ticket.wilayas?.name_fr || ticket.wilaya_code || 'Non spécifié')
+        const wilaya = formatTicketWilaya(ticket)
         lateSawiRegionGroups[wilaya] = (lateSawiRegionGroups[wilaya] || 0) + 1
       })
       setLateSawiByRegion(Object.entries(lateSawiRegionGroups))
 
       // Chart 7: SAWI tickets in NKC by zone (open SAWI NKC tickets with allowed statuses)
-      const sawiNkcTickets = sawiTickets.filter(t => t.wilaya_code === 'NKC' || t.wilaya_code === '15')
+      const sawiNkcTickets = sawiTickets.filter(isTicketInNouakchott)
       const sawiNkcZoneGroups = {}
       sawiNkcTickets.forEach(ticket => {
         const zone = ticket.regions?.name_fr || 'Non spécifié'
@@ -345,7 +337,7 @@ export default function Dashboard() {
       setSawiNkcByZone(Object.entries(sawiNkcZoneGroups))
 
       // Chart 6: Late SAWI tickets in NKC by zone (open late SAWI NKC tickets with allowed statuses)
-      const lateSawiNkcTickets = lateSawiTickets.filter(t => t.wilaya_code === 'NKC' || t.wilaya_code === '15')
+      const lateSawiNkcTickets = lateSawiTickets.filter(isTicketInNouakchott)
       const lateSawiNkcZoneGroups = {}
       lateSawiNkcTickets.forEach(ticket => {
         const zone = ticket.regions?.name_fr || 'Non spécifié'
@@ -495,18 +487,46 @@ export default function Dashboard() {
   const regionChartData = {
     labels: regionData.map(([name]) => name),
     datasets: [{
-      label: t('dashboard.byRegion') || 'Par zone (Nouakchott)',
+      label: t('dashboard.byRegion') || 'Par zone (NKC)',
       data: regionData.map(([, count]) => count),
       backgroundColor: '#006400',
     }]
   }
 
   
-  const lateTicketsByDaysSorted = [...lateTicketsByDays].sort((a, b) => b[1] - a[1])
+  const lateTicketsByDaysSorted = [...lateTicketsByDays].sort((a, b) => b[0] - a[0])
   const sawiByRegionSorted = [...sawiByRegion].sort((a, b) => b[1] - a[1])
   const lateSawiByRegionSorted = [...lateSawiByRegion].sort((a, b) => b[1] - a[1])
   const lateSawiNkcByZoneSorted = [...lateSawiNkcByZone].sort((a, b) => b[1] - a[1])
   const sawiNkcByZoneSorted = [...sawiNkcByZone].sort((a, b) => b[1] - a[1])
+
+  // Préparer les données et couleurs pour Graph 1 dans l'ordre et le style de l'interface installation
+  const total = Object.values(serviceDelayData).reduce((sum, d) => sum + d.total, 0);
+  const late = Object.values(serviceDelayData).reduce((sum, d) => sum + d.late, 0);
+  const sawiLate = serviceDelayData['SAWI'] ? serviceDelayData['SAWI'].late : 0;
+  const ftthLate = serviceDelayData['FTTH'] ? serviceDelayData['FTTH'].late : 0;
+  const blrLate = serviceDelayData['BLR'] ? serviceDelayData['BLR'].late : 0;
+  const graph1Labels = [
+    'Total tickets', 'Total En Retard',
+    'SAWI', 'En Retard',
+    'FTTH', 'En Retard',
+    'BLR', 'En Retard'
+  ];
+  const graph1Data = [
+    total, late,
+    serviceDelayData['SAWI'] ? serviceDelayData['SAWI'].total : 0,
+    serviceDelayData['SAWI'] ? serviceDelayData['SAWI'].late : 0,
+    serviceDelayData['FTTH'] ? serviceDelayData['FTTH'].total : 0,
+    serviceDelayData['FTTH'] ? serviceDelayData['FTTH'].late : 0,
+    serviceDelayData['BLR'] ? serviceDelayData['BLR'].total : 0,
+    serviceDelayData['BLR'] ? serviceDelayData['BLR'].late : 0
+  ];
+  const graph1Colors = [
+    '#2563eb', '#ef4444',
+    '#2563eb', '#ef4444',
+    '#2563eb', '#ef4444',
+    '#2563eb', '#ef4444'
+  ];
 
   if (loading) {
     return (
@@ -665,24 +685,18 @@ export default function Dashboard() {
               <div style={{ height: '350px' }}>
                 <Bar
                   data={{
-                    labels: Object.keys(serviceDelayData),
-                    datasets: [
-                      {
-                        label: 'Total',
-                        data: Object.values(serviceDelayData).map(d => d.total),
-                      },
-                      {
-                        label: 'En Retard',
-                        data: Object.values(serviceDelayData).map(d => d.late),
-                        backgroundColor: '#dc2626',
-                      }
-                    ]
+                    labels: graph1Labels,
+                    datasets: [{
+                      label: 'Nombre',
+                      data: graph1Data,
+                      backgroundColor: graph1Colors,
+                    }]
                   }}
                   options={{
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
-                      legend: { position: 'bottom', labels: { font: { size: 11, weight: 500 } } },
+                      legend: { display: false },
                       valueLabel: { color: '#fff', font: 'bold 11px sans-serif' }
                     },
                     scales: { y: { beginAtZero: true, ticks: { stepSize: 1, precision: 0, font: { size: 11 } } } }
@@ -735,8 +749,8 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Row 2: Chart 4 - Late Tickets by Days (directly after Chart 2) */}
-        <div className="grid grid-cols-1 lg:grid-cols-1 gap-6">
+        {/* Row 2: Chart 4 & Chart 5 */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Chart 4: Late Tickets by Days */}
           <div className="bg-gradient-to-br from-white to-gray-50 rounded-xl shadow-lg hover:shadow-xl transition-shadow p-6 border border-gray-100">
             <div className="flex items-center justify-between mb-4">
@@ -751,7 +765,7 @@ export default function Dashboard() {
               </div>
             </div>
             {lateTicketsByDays.length > 0 ? (
-              <div style={{ height: '350px' }}>
+              <div className="w-full" style={{ height: '350px' }}>
                 <Bar
                   data={{
                     labels: lateTicketsByDaysSorted.map(([days]) => `${days} jour${days !== 1 ? 's' : ''}`),
@@ -778,56 +792,47 @@ export default function Dashboard() {
               <p className="text-gray-500 text-sm text-center py-8">Aucun ticket en retard</p>
             )}
           </div>
-        </div>
 
-        {/* Row 3: Chart 3 & 5 */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Chart 3: SAWI NKC by Zone */}
+          {/* Chart 5: Tickets par Service */}
           <div className="bg-gradient-to-br from-white to-gray-50 rounded-xl shadow-lg hover:shadow-xl transition-shadow p-6 border border-gray-100">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-lg font-bold text-gray-900">
-                  Graph 3: SAWI NKC par Zone
+                  Graph 5: Tickets par Service
                 </h3>
-                <p className="text-xs text-gray-500 mt-1">Répartition par zones de Nouakchott</p>
+                <p className="text-xs text-gray-500 mt-1">Répartition globale</p>
               </div>
-              <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                <span className="text-lg">🟦</span>
+              <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                <span className="text-lg">🟢</span>
               </div>
             </div>
-            {sawiNkcByZone.length > 0 ? (
+            {serviceData.length > 0 ? (
               <div style={{ height: '350px' }}>
-                <Bar
-                  data={{
-                    labels: sawiNkcByZoneSorted.map(([zone]) => zone),
-                    datasets: [{
-                      label: 'Tickets SAWI NKC',
-                      data: sawiNkcByZoneSorted.map(([, count]) => count),
-                      backgroundColor: '#2563eb',
-                    }]
-                  }}
+                <Pie
+                  data={serviceChartData}
                   options={{
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
-                      legend: { position: 'bottom', labels: { font: { size: 11, weight: 500 } } },
-                      valueLabel: { color: '#fff', font: 'bold 11px sans-serif' }
-                    },
-                    scales: { y: { beginAtZero: true, ticks: { stepSize: 1, precision: 0, font: { size: 11 } } } }
+                      legend: { position: 'bottom', labels: { font: { size: 11, weight: 500 } } }
+                    }
                   }}
                 />
               </div>
             ) : (
-              <p className="text-gray-500 text-sm text-center py-8">Aucun ticket SAWI NKC</p>
+              <p className="text-gray-500 text-sm text-center py-8">Aucune donnée disponible</p>
             )}
           </div>
+        </div>
 
-          {/* Chart 5: SAWI by Region (Wilaya) */}
+        {/* Row 3: Chart 3 & 4 (Swapped) */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Chart 3: SAWI par Région (was Graph 5) */}
           <div className="bg-gradient-to-br from-white to-gray-50 rounded-xl shadow-lg hover:shadow-xl transition-shadow p-6 border border-gray-100">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-lg font-bold text-gray-900">
-                  Graph 5: SAWI par Région
+                  Graph 3: SAWI par Région
                 </h3>
                 <p className="text-xs text-gray-500 mt-1">Répartition géographique</p>
               </div>
@@ -861,10 +866,50 @@ export default function Dashboard() {
               <p className="text-gray-500 text-sm text-center py-8">Aucun ticket SAWI</p>
             )}
           </div>
+
+          {/* Chart 4: SAWI NKC par Zone (was Graph 3) */}
+          <div className="bg-gradient-to-br from-white to-gray-50 rounded-xl shadow-lg hover:shadow-xl transition-shadow p-6 border border-gray-100">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">
+                  Graph 4: SAWI NKC par Zone
+                </h3>
+                <p className="text-xs text-gray-500 mt-1">Répartition par zones de NKC</p>
+              </div>
+              <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                <span className="text-lg">🟦</span>
+              </div>
+            </div>
+            {sawiNkcByZone.length > 0 ? (
+              <div style={{ height: '350px' }}>
+                <Bar
+                  data={{
+                    labels: sawiNkcByZoneSorted.map(([zone]) => zone),
+                    datasets: [{
+                      label: 'Tickets SAWI NKC',
+                      data: sawiNkcByZoneSorted.map(([, count]) => count),
+                      backgroundColor: '#2563eb',
+                    }]
+                  }}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                      legend: { position: 'bottom', labels: { font: { size: 11, weight: 500 } } },
+                      valueLabel: { color: '#fff', font: 'bold 11px sans-serif' }
+                    },
+                    scales: { y: { beginAtZero: true, ticks: { stepSize: 1, precision: 0, font: { size: 11 } } } }
+                  }}
+                />
+              </div>
+            ) : (
+              <p className="text-gray-500 text-sm text-center py-8">Aucun ticket SAWI NKC</p>
+            )}
+          </div>
         </div>
 
-        {/* Row 4: Chart 6 */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Row 4: Chart 6 & Chart 7 */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Chart 6: Late SAWI by Region (Wilaya) */}
           <div className="bg-gradient-to-br from-white to-gray-50 rounded-xl shadow-lg hover:shadow-xl transition-shadow p-6 border border-gray-100">
             <div className="flex items-center justify-between mb-4">
@@ -904,49 +949,46 @@ export default function Dashboard() {
               <p className="text-gray-500 text-sm text-center py-8">Aucun ticket SAWI en retard</p>
             )}
           </div>
-        </div>
-      </div>
 
-      {/* Row 4: Chart 7 */}
-      <div className="grid grid-cols-1 lg:grid-cols-1 gap-6">
-        {/* Chart 7: Late SAWI NKC by Zone */}
-        <div className="bg-gradient-to-br from-white to-gray-50 rounded-xl shadow-lg hover:shadow-xl transition-shadow p-6 border border-gray-100">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h3 className="text-lg font-bold text-gray-900">
-                Graph 7: SAWI NKC en Retard par Zone
-              </h3>
-              <p className="text-xs text-gray-500 mt-1">Zones Nouakchott en retard</p>
+          {/* Chart 7: Late SAWI NKC by Zone */}
+          <div className="bg-gradient-to-br from-white to-gray-50 rounded-xl shadow-lg hover:shadow-xl transition-shadow p-6 border border-gray-100">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">
+                  Graph 7: SAWI NKC en Retard par Zone
+                </h3>
+                <p className="text-xs text-gray-500 mt-1">Zones NKC en retard</p>
+              </div>
+              <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
+                <span className="text-lg">🚨</span>
+              </div>
             </div>
-            <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
-              <span className="text-lg">🚨</span>
-            </div>
+            {lateSawiNkcByZone.length > 0 ? (
+              <div style={{ height: '350px' }}>
+                <Bar
+                  data={{
+                    labels: lateSawiNkcByZoneSorted.map(([zone]) => zone),
+                    datasets: [{
+                      label: 'Tickets SAWI NKC en Retard',
+                      data: lateSawiNkcByZoneSorted.map(([, count]) => count),
+                      backgroundColor: '#ef4444',
+                    }]
+                  }}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                      legend: { position: 'bottom', labels: { font: { size: 11, weight: 500 } } },
+                      valueLabel: { color: '#fff', font: 'bold 11px sans-serif' }
+                    },
+                    scales: { y: { beginAtZero: true, ticks: { stepSize: 1, precision: 0, font: { size: 11 } } } }
+                  }}
+                />
+              </div>
+            ) : (
+              <p className="text-gray-500 text-sm text-center py-8">Aucun ticket SAWI NKC en retard</p>
+            )}
           </div>
-          {lateSawiNkcByZone.length > 0 ? (
-            <div style={{ height: '350px' }}>
-              <Bar
-                data={{
-                  labels: lateSawiNkcByZoneSorted.map(([zone]) => zone),
-                  datasets: [{
-                    label: 'Tickets SAWI NKC en Retard',
-                    data: lateSawiNkcByZoneSorted.map(([, count]) => count),
-                    backgroundColor: '#ef4444',
-                  }]
-                }}
-                options={{
-                  responsive: true,
-                  maintainAspectRatio: false,
-                  plugins: {
-                    legend: { position: 'bottom', labels: { font: { size: 11, weight: 500 } } },
-                    valueLabel: { color: '#fff', font: 'bold 11px sans-serif' }
-                  },
-                  scales: { y: { beginAtZero: true, ticks: { stepSize: 1, precision: 0, font: { size: 11 } } } }
-                }}
-              />
-            </div>
-          ) : (
-            <p className="text-gray-500 text-sm text-center py-8">Aucun ticket SAWI NKC en retard</p>
-          )}
         </div>
       </div>
 

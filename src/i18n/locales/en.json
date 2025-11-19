@@ -134,7 +134,7 @@
   "validation": {
     "required": "This field is required",
     "invalidFormat": "Invalid format",
-    "regionRequired": "Zone is required for Nouakchott"
+    "regionRequired": "Zone is required for NKC"
   },
   "common": {
     "save": "Save",

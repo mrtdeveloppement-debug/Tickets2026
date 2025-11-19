@@ -3,6 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { supabase } from '../lib/supabase'
 import { ArrowLeft, Calendar, User, Phone, MapPin, Wifi, AlertCircle, Clock, CheckCircle, History, Send } from 'lucide-react'
+import { formatTicketWilaya } from '../utils/location'
 
 export default function TicketDetails() {
   const { id } = useParams()
@@ -330,7 +331,7 @@ export default function TicketDetails() {
                 Localisation
               </label>
               <p className="font-medium text-gray-900">
-                {ticket.wilayas?.name_fr || ticket.wilaya_code}
+                {formatTicketWilaya(ticket)}
                 {ticket.regions && ` - ${ticket.regions.name_fr}`}
               </p>
             </div>

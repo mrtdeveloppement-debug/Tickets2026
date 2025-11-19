@@ -135,7 +135,7 @@
   "validation": {
     "required": "Ce champ est obligatoire",
     "invalidFormat": "Format invalide",
-    "regionRequired": "La zone est obligatoire pour Nouakchott",
+    "regionRequired": "La zone est obligatoire pour NKC",
     "optional": "optionnel"
   },
   "common": {

@@ -13,6 +13,7 @@ import {
 } from 'chart.js'
 import { supabase } from '../lib/supabase'
 import { Wrench, Users, CheckCircle2, XCircle, PhoneOff, Ban, Settings, Search, X, GitBranch, PackageOpen, Clock } from 'lucide-react'
+import { formatTicketWilaya, isTicketInNouakchott } from '../utils/location'
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend)
 
@@ -23,6 +24,7 @@ export default function InstallationDashboard() {
   const [lateByDays, setLateByDays] = useState([])
   const [sawiByRegion, setSawiByRegion] = useState([])
   const [lateSawiByRegion, setLateSawiByRegion] = useState([])
+  const [lateSawiNkcByZone, setLateSawiNkcByZone] = useState([])
   const [installationTickets, setInstallationTickets] = useState([])
   const [timeRange, setTimeRange] = useState('all')
   const [statusCounts, setStatusCounts] = useState({})
@@ -34,7 +36,8 @@ export default function InstallationDashboard() {
   const [installStatusOverrideById, setInstallStatusOverrideById] = useState({})
   const [diagnostic, setDiagnostic] = useState({ role: null, totalCount: null, installCount: null, histCount: null, error: null })
   const normalizeKey = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '_')
-  const getCount = (k) => statusCounts[k] || 0
+  // Correction : toujours afficher 0 si aucun ticket pour ce statut
+  const getCount = (k) => (statusCounts[k] !== undefined ? statusCounts[k] : 0)
 
   const INSTALLATION_STATUSES = ['matériel','équipe_installation','installé','annulé','injoignable','installation_impossible','optimisation','extension','manque_de_materiel']
   
@@ -165,21 +168,24 @@ export default function InstallationDashboard() {
         
         normalized.forEach(t => {
           const statusKey = normalizeKey(getInstallationStatus(t));
+          if (!statusKey || statusKey === 'undefined' || statusKey === 'null') return;
           counts[statusKey] = (counts[statusKey] || 0) + 1;
-          
           if (!statusBreakdown[statusKey]) {
             statusBreakdown[statusKey] = [];
           }
           statusBreakdown[statusKey].push(t.ticket_number);
+        });
+        // Remove statuses with zero count
+        Object.keys(counts).forEach(key => {
+          if (!counts[key]) delete counts[key];
         });
 
         // Compter les tickets en retard (>= 24h)
         const overdueTickets = normalized.filter(t => isTicketOverdue(t));
         counts['overdue24'] = overdueTickets.length;
 
-        // Update the total count to match the filtered tickets
-        const totalCount = normalized.length;
-        setStatusCounts({ ...counts, total: totalCount });
+        // Ensure the total count matches the displayed tickets
+        setStatusCounts({ ...counts, total: installationTickets.length });
 
         console.log('Total tickets installation:', normalized.length);
         console.log('Statuts comptés avec tickets en retard:', counts);
@@ -240,6 +246,8 @@ export default function InstallationDashboard() {
 
   const sawiByRegionSorted = [...sawiByRegion].sort((a, b) => b[1] - a[1])
   const lateSawiByRegionSorted = [...lateSawiByRegion].sort((a, b) => b[1] - a[1])
+  // Define lateSawiNkcByZoneSorted with a default value to prevent errors
+  const lateSawiNkcByZoneSorted = lateSawiNkcByZone ? [...lateSawiNkcByZone].sort((a, b) => b[1] - a[1]) : [];
 
   useEffect(() => {
     console.log('Données des tickets d\'installation:', installationTickets);
@@ -266,17 +274,9 @@ export default function InstallationDashboard() {
 
         const { data } = await query;
         const allTickets = data || [];
-        
-        console.log('Total de tickets bruts:', allTickets.length);
-        console.log('Répartition - Installation:', allTickets.filter(t => t.category === 'installation').length);
-        console.log('Répartition - Réclamation:', allTickets.filter(t => t.category === 'reclamation').length);
-        console.log('Répartition - Autre/null:', allTickets.filter(t => !t.category || (t.category !== 'installation' && t.category !== 'reclamation')).length);
-        
+
         // Utiliser la même logique de filtrage que pour les icônes
         const installationTicketsForGraphs = filterInstallationTickets(allTickets);
-
-        console.log('Tickets installation après filtrage pour graphes:', installationTicketsForGraphs.length);
-        console.log('Numéros de tickets installation:', installationTicketsForGraphs.map(t => t.ticket_number));
 
         // Graph 1: Service et Retard (installation uniquement - statuts autorisés)
         const allowedInstallStatuses = ['materiel', 'equipe_installation', 'extension', 'optimisation', 'manque_de_materiel', 'injoignable'];
@@ -309,11 +309,6 @@ export default function InstallationDashboard() {
             allTicketsList.push({ ticket_number: t.ticket_number, status: getInstallationStatus(t), daysLate });
           }
         });
-        console.log('Installation Tickets by Days (Graph 2):', {
-          total: allTicketsList.length,
-          byDays: lateTicketsMap,
-          tickets: allTicketsList
-        });
         const sortedByDays = Object.entries(lateTicketsMap)
           .map(([days, count]) => [Number(days), count])
           .sort((a, b) => b[0] - a[0]); // Sort descending (right to left: highest days first)
@@ -325,7 +320,7 @@ export default function InstallationDashboard() {
           const ticketStatus = normalizeKey(getInstallationStatus(t));
           return t.subscription_type === 'SAWI' && allowedInstallStatuses.includes(ticketStatus);
         }).forEach(t => {
-          const region = t.regions?.name_fr || t.wilaya_code || 'Non spécifié';
+          const region = formatTicketWilaya(t);
           sawiRegionMap[region] = (sawiRegionMap[region] || 0) + 1;
         });
         setSawiByRegion(Object.entries(sawiRegionMap));
@@ -336,10 +331,26 @@ export default function InstallationDashboard() {
           const ticketStatus = normalizeKey(getInstallationStatus(t));
           return t.subscription_type === 'SAWI' && isTicketOverdue(t) && allowedInstallStatuses.includes(ticketStatus);
         }).forEach(t => {
-          const region = t.regions?.name_fr || t.wilaya_code || 'Non spécifié';
+          const region = formatTicketWilaya(t);
           lateSawiRegionMap[region] = (lateSawiRegionMap[region] || 0) + 1;
         });
         setLateSawiByRegion(Object.entries(lateSawiRegionMap));
+
+        // Graph 5: SAWI NKC en Retard par Zone
+        const lateSawiNkcZoneMap = {};
+        installationTicketsForGraphs.filter(t => {
+          const ticketStatus = normalizeKey(getInstallationStatus(t));
+          return t.subscription_type === 'SAWI'
+            && isTicketOverdue(t)
+            && allowedInstallStatuses.includes(ticketStatus)
+            && isTicketInNouakchott(t);
+        }).forEach(t => {
+          let zone = t.regions?.name_fr || 'Non spécifié';
+          lateSawiNkcZoneMap[zone] = (lateSawiNkcZoneMap[zone] || 0) + 1;
+        });
+        console.log('lateSawiNkcByZone data:', lateSawiNkcZoneMap);
+        setLateSawiNkcByZone(Object.entries(lateSawiNkcZoneMap));
+
       } catch (error) {
         console.error('Erreur lors du chargement des données des graphes:', error);
       }
@@ -514,15 +525,15 @@ export default function InstallationDashboard() {
               const ftthLate = sds['FTTH']?.late || 0
               const blrTotal = sds['BLR']?.total || 0
               const blrLate = sds['BLR']?.late || 0
+              // Correct the syntax error in the labels array
               const labels = [
                 'Total tickets',
                 'Total En Retard',
-                'SAWI',
-                'En Retard',
+               
                 'FTTH',
                 'En Retard',
                 'BLR',
-                'En Retard'
+                'En Retard', // Ensure a trailing comma is present
               ]
               const dataPoints = [
                 totalTickets,
@@ -643,6 +654,30 @@ export default function InstallationDashboard() {
         </div>
         </div>
 
+        {/* Graph 5: SAWI NKC en Retard par Zone */}
+        <div className="grid grid-cols-1 gap-6">
+          <div className="bg-white rounded-lg shadow-md p-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">Graph 5: SAWI NKC en Retard par Zone</h3>
+            {lateSawiNkcByZoneSorted.length > 0 ? (
+              <div style={{ height: '350px' }}>
+                <Bar
+                  data={{
+                    labels: lateSawiNkcByZoneSorted.map(([zone]) => zone),
+                    datasets: [{
+                      label: 'Tickets SAWI NKC en Retard',
+                      data: lateSawiNkcByZoneSorted.map(([, count]) => count),
+                      backgroundColor: '#f59e42'
+                    }]
+                  }}
+                  options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }}
+                />
+              </div>
+            ) : (
+              <p className="text-gray-500 text-sm">Aucun ticket SAWI NKC en retard</p>
+            )}
+          </div>
+        </div>
+
       {/* Tickets récents */}
       <div className="bg-white rounded-lg shadow-md overflow-hidden">
         <div className="px-6 py-4 flex items-center justify-between">
@@ -670,7 +705,7 @@ export default function InstallationDashboard() {
                       (t.ticket_number || '').toLowerCase().includes(s) ||
                       (t.subscriber_number || '').toLowerCase().includes(s) ||
                       (t.phone || '').toLowerCase().includes(s) ||
-                      (t.wilayas?.name_fr || t.wilaya_code || '').toLowerCase().includes(s) ||
+                      formatTicketWilaya(t).toLowerCase().includes(s) ||
                       (t.regions?.name_fr || '').toLowerCase().includes(s) ||
                       (t.subscription_type || '').toLowerCase().includes(s)
                     ))
@@ -683,7 +718,7 @@ export default function InstallationDashboard() {
                         <td className="px-6 py-4 text-sm font-medium text-primary">{t.ticket_number}</td>
                         <td className="px-6 py-4 text-sm text-gray-900">{t.subscriber_number}</td>
                         <td className="px-6 py-4 text-sm text-gray-900">{t.phone}</td>
-                        <td className="px-6 py-4 text-sm text-gray-500">{t.wilayas?.name_fr || t.wilaya_code}</td>
+                        <td className="px-6 py-4 text-sm text-gray-500">{formatTicketWilaya(t)}</td>
                         <td className="px-6 py-4 text-sm text-gray-500">{t.regions?.name_fr || '-'}</td>
                         <td className="px-6 py-4 text-sm text-gray-500">{t.subscription_type}</td>
                         <td className="px-6 py-4 text-sm text-gray-500">{getInstallationStatus(t) || '-'}</td>
@@ -696,7 +731,7 @@ export default function InstallationDashboard() {
                     ) : limited.length > 0 ? (
                       <tr className="bg-gray-100 font-bold">
                         <td className="px-6 py-4 text-sm" colSpan="6">Total</td>
-                        <td className="px-6 py-4 text-sm">{filtered.length}</td>
+                        <td className="px-6 py-4 text-sm">{limited.length}</td>
                       </tr>
                     ) : null}
                   </>

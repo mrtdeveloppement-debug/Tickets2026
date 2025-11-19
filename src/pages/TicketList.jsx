@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { Search, Filter, Eye, History, Download } from 'lucide-react'
+import { formatTicketWilaya } from '../utils/location'
 
 export default function TicketList() {
   const { t, i18n } = useTranslation()
@@ -54,7 +55,11 @@ export default function TicketList() {
         const cn = String(ticket.client_name || '').toLowerCase()
         const sn = String(ticket.subscriber_number || '').toLowerCase()
         const ph = String(ticket.phone || '')
-        return tn.includes(q) || cn.includes(q) || sn.includes(q) || ph.includes(q)
+        const wilaya = formatTicketWilaya(ticket).toLowerCase()
+        const region =
+          String(ticket.regions?.name_fr || ticket.regions?.name_en || ticket.regions?.name_ar || '')
+            .toLowerCase()
+        return tn.includes(q) || cn.includes(q) || sn.includes(q) || ph.includes(q) || wilaya.includes(q) || region.includes(q)
       })
     }
 
@@ -336,15 +341,11 @@ export default function TicketList() {
       <div className="flex justify-end gap-2">
         <button
           onClick={() => {
-            const rows = filteredTickets.map(t => ({
+              const rows = filteredTickets.map(t => ({
               ticket_number: t.ticket_number,
               subscriber_number: t.subscriber_number,
               phone: t.phone,
-              wilaya: (() => {
-                const lang = i18n.language || 'fr'
-                const key = lang.startsWith('ar') ? 'name_ar' : lang.startsWith('en') ? 'name_en' : 'name_fr'
-                return t.wilayas?.[key] || t.wilaya_code
-              })(),
+                wilaya: formatTicketWilaya(t),
               region: (() => {
                 const lang = i18n.language || 'fr'
                 const key = lang.startsWith('ar') ? 'name_ar' : lang.startsWith('en') ? 'name_en' : 'name_fr'
@@ -425,13 +426,14 @@ export default function TicketList() {
                 setSearchTerm(v)
                 // restore focus and selection after state update to avoid losing focus between renders
                 setTimeout(() => {
+                  const el = searchInputRef.current
+                  if (!el) return
                   try {
-                    const el = searchInputRef.current
-                    if (el) {
-                      el.focus()
-                      el.setSelectionRange(selectionRef.current.start, selectionRef.current.end)
-                    }
-                  } catch (e) {}
+                    el.focus()
+                    el.setSelectionRange(selectionRef.current.start, selectionRef.current.end)
+                  } catch (err) {
+                    // Selection APIs may fail on certain input types; safe to ignore
+                  }
                 }, 0)
               }}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
@@ -509,7 +511,7 @@ export default function TicketList() {
                           )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {ticket.wilayas?.name_fr || ticket.wilaya_code || '-'}
+                          {formatTicketWilaya(ticket) || '-'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           {ticket.regions?.name_fr || '-'}

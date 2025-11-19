@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { supabase } from '../lib/supabase'
 import { supabaseAdmin } from '../lib/supabaseAdmin'
 import { UserPlus, Edit, Trash2, Shield, X, Save } from 'lucide-react'
+import { formatWilayaName, requiresRegionSelection } from '../utils/location'
 
 export default function AdminUsers() {
   const { t } = useTranslation()
@@ -31,6 +32,24 @@ export default function AdminUsers() {
     loadUsers()
     loadWilayasAndRegions()
   }, [])
+
+  useEffect(() => {
+    if (regions.length === 0) return
+    const nkcRegionIds = regions
+      .filter(region => requiresRegionSelection(region.name_fr, region.wilaya_code))
+      .map(region => region.id)
+    if (nkcRegionIds.length === 0) return
+
+    setSelectedRegions(prev => {
+      const hasNkc = selectedWilayas.some(code => requiresRegionSelection(null, code))
+      if (hasNkc) {
+        const merged = Array.from(new Set([...prev, ...nkcRegionIds]))
+        return merged.length === prev.length ? prev : merged
+      }
+      const filtered = prev.filter(id => !nkcRegionIds.includes(id))
+      return filtered.length === prev.length ? prev : filtered
+    })
+  }, [regions, selectedWilayas])
 
   const loadWilayasAndRegions = async () => {
     try {
@@ -362,14 +381,6 @@ export default function AdminUsers() {
     )
   }
 
-  const toggleRegion = (regionId) => {
-    setSelectedRegions(prev =>
-      prev.includes(regionId)
-        ? prev.filter(r => r !== regionId)
-        : [...prev, regionId]
-    )
-  }
-
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -459,7 +470,7 @@ export default function AdminUsers() {
                       <div className="space-y-1">
                         {user.user_wilayas?.map((uw, idx) => (
                           <span key={idx} className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded mr-1">
-                            {uw.wilayas?.name_fr || uw.wilaya_code}
+                            {formatWilayaName(uw.wilayas?.name_fr, uw.wilaya_code)}
                           </span>
                         ))}
                         {user.user_regions?.map((ur, idx) => (
@@ -675,30 +686,10 @@ export default function AdminUsers() {
                   </div>
                 )}
 
-                {/* Region Assignments (for NKC - only if NKC is selected in wilayas) */}
-                {formData.role !== 'admin' && selectedWilayas.includes('NKC') && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      {t('admin.assignRegions')}
-                    </label>
-                    <div className="flex flex-wrap gap-2">
-                      {regions.filter(r => r.wilaya_code === 'NKC').map(region => (
-                        <button
-                          key={region.id}
-                          type="button"
-                          onClick={() => toggleRegion(region.id)}
-                          className={`px-4 py-2 rounded-lg border-2 transition-colors ${
-                            selectedRegions.includes(region.id)
-                              ? 'bg-primary text-white border-primary'
-                              : 'bg-white text-gray-700 border-gray-300 hover:border-primary'
-                          }`}
-                        >
-                          {region.name_fr}
-                        </button>
-                      ))}
-                    </div>
-                    <p className="mt-1 text-xs text-gray-500">{t('admin.regionAssignmentHelp')}</p>
-                  </div>
+                {formData.role !== 'admin' && selectedWilayas.some(code => requiresRegionSelection(null, code)) && (
+                  <p className="text-xs text-primary font-semibold">
+                    Toutes les zones de NKC sont automatiquement accordées lorsque la wilaya NKC est sélectionnée.
+                  </p>
                 )}
 
                 {/* Active Status */}

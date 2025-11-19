@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { Save, X } from 'lucide-react'
+import { requiresRegionSelection } from '../utils/location'
 
 export default function NewTicket() {
   const { t, i18n } = useTranslation()
@@ -94,7 +95,7 @@ export default function NewTicket() {
     // Problem description now optional
 
     // Region required for NKC
-    if (formData.wilaya_code === 'NKC' && !formData.region_id) {
+    if (requiresRegionSelection(null, formData.wilaya_code) && !formData.region_id) {
       newErrors.region_id = t('validation.regionRequired')
     }
 
@@ -168,7 +169,7 @@ export default function NewTicket() {
       }
 
       // Remove region_id if not NKC
-      if (formData.wilaya_code !== 'NKC') {
+      if (!requiresRegionSelection(null, formData.wilaya_code)) {
         delete ticketData.region_id
       }
 
@@ -364,8 +365,8 @@ export default function NewTicket() {
             )}
           </div>
 
-          {/* Region (only for NKC) */}
-          {formData.wilaya_code === 'NKC' && (
+        {/* Region (only for NKC) */}
+        {requiresRegionSelection(null, formData.wilaya_code) && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 {t('ticket.region')} *

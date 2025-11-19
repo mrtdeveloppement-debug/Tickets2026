@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { supabase } from '../lib/supabase'
 import { Save, X, ArrowLeft } from 'lucide-react'
+import { requiresRegionSelection } from '../utils/location'
 
 export default function EditTicket() {
   const { id } = useParams()
@@ -35,7 +36,7 @@ export default function EditTicket() {
   }, [id])
 
   useEffect(() => {
-    if (formData.wilaya_code === '15') {
+    if (requiresRegionSelection(null, formData.wilaya_code)) {
       loadRegions()
     } else {
       setRegions([])
@@ -142,8 +143,8 @@ export default function EditTicket() {
     if (category === 'installation' && !formData.installation_status) newErrors.installation_status = t('validation.required')
     // Problem description now optional
 
-    // Region required for Nouakchott
-    if (formData.wilaya_code === '15' && !formData.region_id) {
+    // Region required for NKC
+    if (requiresRegionSelection(null, formData.wilaya_code) && !formData.region_id) {
       newErrors.region_id = t('validation.regionRequired')
     }
 
@@ -414,8 +415,8 @@ export default function EditTicket() {
             )}
           </div>
 
-          {/* Region (only for Nouakchott) */}
-          {formData.wilaya_code === '15' && (
+        {/* Region (only for NKC) */}
+          {requiresRegionSelection(null, formData.wilaya_code) && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 {t('ticket.region')} *

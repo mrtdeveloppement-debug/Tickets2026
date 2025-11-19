@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { supabase } from '../lib/supabase'
-import { History, User, Calendar, Filter, Download, RefreshCw } from 'lucide-react'
+import { History, Calendar, Filter, Download, RefreshCw } from 'lucide-react'
 
 export default function ActivityLogs() {
   const { t } = useTranslation()
@@ -9,13 +9,12 @@ export default function ActivityLogs() {
   const [loading, setLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState('')
   const [filters, setFilters] = useState({
-    action: '',
-    entity_type: '',
     user_id: '',
     date_from: '',
     date_to: ''
   })
   const [users, setUsers] = useState([])
+  const [sessionStatus, setSessionStatus] = useState({})
 
   useEffect(() => {
     loadLogs()
@@ -29,16 +28,11 @@ export default function ActivityLogs() {
       let query = supabase
         .from('activity_logs')
         .select('*')
+        .in('action', ['LOGIN', 'LOGOUT'])
         .order('created_at', { ascending: false })
-        .limit(100)
+        .limit(200)
 
       // Apply filters
-      if (filters.action) {
-        query = query.eq('action', filters.action)
-      }
-      if (filters.entity_type) {
-        query = query.eq('entity_type', filters.entity_type)
-      }
       if (filters.user_id) {
         query = query.eq('user_id', filters.user_id)
       }
@@ -52,7 +46,23 @@ export default function ActivityLogs() {
       const { data, error } = await query
 
       if (error) throw error
-      setLogs(data || [])
+      const safeData = data || []
+      setLogs(safeData)
+
+      // Build latest session status per user (first LOGIN/LOGOUT in sorted logs)
+      const sessions = {}
+      safeData.forEach(log => {
+        if (!log?.user_id) return
+        if (!['LOGIN', 'LOGOUT'].includes(log.action)) return
+        if (sessions[log.user_id]) return
+        sessions[log.user_id] = {
+          status: log.action === 'LOGIN' ? 'online' : 'offline',
+          action: log.action,
+          timestamp: log.created_at,
+          userName: log.user_name || log.user_email || 'Système'
+        }
+      })
+      setSessionStatus(sessions)
     } catch (error) {
       console.error('Error loading logs:', error)
       setErrorMessage('Une erreur s\'est produite lors du chargement des journaux.')
@@ -81,8 +91,6 @@ export default function ActivityLogs() {
 
   const resetFilters = () => {
     setFilters({
-      action: '',
-      entity_type: '',
       user_id: '',
       date_from: '',
       date_to: ''
@@ -92,14 +100,12 @@ export default function ActivityLogs() {
 
   const exportLogs = () => {
     const csv = [
-      ['Date', 'Utilisateur', 'Action', 'Type', 'Entité', 'Description'].join(','),
+      ['Date', 'Utilisateur', 'Action', 'Détails'].join(','),
       ...logs.map(log => [
         new Date(log.created_at).toLocaleString('fr-FR'),
-        log.user_name || 'Système',
+        log.user_name || log.user_email || 'Système',
         getActionLabel(log.action),
-        getEntityLabel(log.entity_type),
-        log.entity_name || '-',
-        log.description || '-'
+        (log.description || '-').replace(/,/g, ';')
       ].join(','))
     ].join('\n')
 
@@ -147,35 +153,43 @@ export default function ActivityLogs() {
     }
   }
 
-  const getEntityIcon = (entityType) => {
-    switch (entityType) {
-      case 'ticket': return '🎫'
-      case 'user': return '👤'
-      case 'technician_service': return '🔧'
-      default: return '📄'
+  const getSessionBadge = (status) => {
+    switch (status) {
+      case 'online':
+        return 'bg-green-100 text-green-800'
+      case 'offline':
+        return 'bg-gray-100 text-gray-800'
+      default:
+        return 'bg-yellow-100 text-yellow-800'
     }
   }
 
-  const getEntityLabel = (entityType) => {
-    switch (entityType) {
-      case 'ticket': return 'Ticket'
-      case 'user': return 'Utilisateur'
-      case 'technician_service': return 'Service Technicien'
-      default: return entityType
+  const getSessionLabel = (status) => {
+    switch (status) {
+      case 'online':
+        return 'En ligne'
+      case 'offline':
+        return 'Déconnecté'
+      default:
+        return 'Inconnu'
     }
   }
+
+  const sessionSummary = Object.values(sessionStatus)
+  const onlineCount = sessionSummary.filter(s => s.status === 'online').length
+  const offlineCount = sessionSummary.filter(s => s.status === 'offline').length
 
   return (
     <div className="p-6">
       {/* Header */}
       <div className="mb-6">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <History className="w-8 h-8 text-primary" />
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Journal d'Activité</h1>
-              <p className="text-gray-500">Historique de toutes les actions</p>
-            </div>
+            <div className="flex items-center gap-3">
+              <History className="w-8 h-8 text-primary" />
+              <div>
+                <h1 className="text-3xl font-bold text-gray-900">Suivi des connexions</h1>
+                <p className="text-gray-500">Dernières connexions et déconnexions des utilisateurs</p>
+              </div>
           </div>
           
           <div className="flex gap-2">
@@ -201,43 +215,13 @@ export default function ActivityLogs() {
       <div className="bg-white rounded-lg shadow-md p-4 mb-6">
         <div className="flex items-center gap-2 mb-4">
           <Filter className="w-5 h-5 text-gray-500" />
-          <h2 className="text-lg font-semibold">Filtres</h2>
+          <div>
+            <h2 className="text-lg font-semibold">Filtrer les connexions</h2>
+            <p className="text-sm text-gray-500">Seules les connexions/déconnexions sont conservées</p>
+          </div>
         </div>
         
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Action</label>
-            <select
-              name="action"
-              value={filters.action}
-              onChange={handleFilterChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary"
-            >
-              <option value="">Toutes</option>
-              <option value="CREATE">Création</option>
-              <option value="UPDATE">Modification</option>
-              <option value="DELETE">Suppression</option>
-              <option value="LOGIN">Connexion</option>
-              <option value="LOGOUT">Déconnexion</option>
-              <option value="VIEW">Consultation</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
-            <select
-              name="entity_type"
-              value={filters.entity_type}
-              onChange={handleFilterChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary"
-            >
-              <option value="">Tous</option>
-              <option value="ticket">Ticket</option>
-              <option value="user">Utilisateur</option>
-              <option value="technician_service">Service Technicien</option>
-            </select>
-          </div>
-
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Utilisateur</label>
             <select
@@ -248,7 +232,7 @@ export default function ActivityLogs() {
             >
               <option value="">Tous</option>
               {users.map(user => (
-                <option key={user.id} value={user.id}>{user.full_name}</option>
+                <option key={user.id} value={user.id}>{user.full_name || user.email}</option>
               ))}
             </select>
           </div>
@@ -292,6 +276,48 @@ export default function ActivityLogs() {
         </div>
       </div>
 
+      {/* Session status */}
+      <div className="bg-white rounded-lg shadow-md p-4 mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-lg font-semibold">Statut des connexions</h2>
+            <p className="text-sm text-gray-500">Suivi des dernières connexions/déconnexions</p>
+          </div>
+          <div className="flex gap-3 text-sm">
+            <span className="px-3 py-1 rounded-full bg-green-50 text-green-700">
+              {onlineCount} connecté(s)
+            </span>
+            <span className="px-3 py-1 rounded-full bg-gray-50 text-gray-700">
+              {offlineCount} déconnecté(s)
+            </span>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {users.length === 0 ? (
+            <p className="text-sm text-gray-500">Chargement des utilisateurs...</p>
+          ) : (
+            users.map(user => {
+              const session = sessionStatus[user.id]
+              return (
+                <div key={user.id} className="border border-gray-200 rounded-lg p-4 flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-gray-900">{user.full_name || user.email}</span>
+                    <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getSessionBadge(session?.status)}`}>
+                      {getSessionLabel(session?.status)}
+                    </span>
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    {session?.timestamp
+                      ? `${getActionLabel(session.action)} · ${new Date(session.timestamp).toLocaleString('fr-FR')}`
+                      : 'Aucune activité récente'}
+                  </div>
+                </div>
+              )
+            })
+          )}
+        </div>
+      </div>
+
       {/* Logs Table */}
       <div className="bg-white rounded-lg shadow-md overflow-hidden">
         {loading ? (
@@ -308,21 +334,10 @@ export default function ActivityLogs() {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('admin.fullName')}</th>
-                  <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
-                  <th className="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    Action
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    Type
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    Entité
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    Description
-                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t('admin.fullName')}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Détails</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -334,24 +349,17 @@ export default function ActivityLogs() {
                         {new Date(log.created_at).toLocaleString('fr-FR')}
                       </div>
                     </td>
-                    <td className="p-3 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <div className="font-medium text-gray-800">{log.user_name || log.user_email || 'Système'}</div>
-                      </div>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                      {log.user_name || log.user_email || 'Système'}
                     </td>
-                    <td className="p-3 whitespace-nowrap">
-                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getActionClass(log.action)}`}>
-                        {getActionIcon(log.action)} {getActionLabel(log.action)}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getActionColor(log.action)}`}>
+                        <span className="mr-1">{getActionIcon(log.action)}</span>
+                        {getActionLabel(log.action)}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {getEntityIcon(log.entity_type)} {getEntityLabel(log.entity_type)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-primary">
-                      {log.entity_name || '-'}
-                    </td>
                     <td className="px-6 py-4 text-sm text-gray-500">
-                      {log.description || '-'}
+                      {log.description || 'Connexion utilisateur'}
                     </td>
                   </tr>
                 ))}
