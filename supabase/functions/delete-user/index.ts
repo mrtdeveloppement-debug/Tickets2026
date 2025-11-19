@@ -121,7 +121,58 @@ serve(async (req) => {
 
     console.log('🗑️ Suppression de l\'utilisateur:', userId)
 
-    // 1. Supprimer les enregistrements de login_history
+    // 1. Mettre à NULL toutes les références dans les tables
+    // =====================================================
+    
+    // Tickets
+    await supabaseAdmin
+      .from('tickets')
+      .update({ created_by: null })
+      .eq('created_by', userId)
+    
+    await supabaseAdmin
+      .from('tickets')
+      .update({ assigned_to: null })
+      .eq('assigned_to', userId)
+    
+    console.log('✅ Références dans tickets mises à NULL')
+
+    // Ticket history
+    await supabaseAdmin
+      .from('ticket_history')
+      .update({ changed_by: null })
+      .eq('changed_by', userId)
+    
+    console.log('✅ Références dans ticket_history mises à NULL')
+
+    // Technician services (assigned_by)
+    await supabaseAdmin
+      .from('technician_services')
+      .update({ assigned_by: null })
+      .eq('assigned_by', userId)
+    
+    console.log('✅ Références dans technician_services mises à NULL')
+
+    // User wilayas (assigned_by)
+    await supabaseAdmin
+      .from('user_wilayas')
+      .update({ assigned_by: null })
+      .eq('assigned_by', userId)
+    
+    console.log('✅ Références dans user_wilayas mises à NULL')
+
+    // User regions (assigned_by)
+    await supabaseAdmin
+      .from('user_regions')
+      .update({ assigned_by: null })
+      .eq('assigned_by', userId)
+    
+    console.log('✅ Références dans user_regions mises à NULL')
+
+    // 2. Supprimer les enregistrements liés (CASCADE)
+    // =====================================================
+    
+    // Login history
     const { error: loginHistoryError } = await supabaseAdmin
       .from('login_history')
       .delete()
@@ -129,12 +180,36 @@ serve(async (req) => {
 
     if (loginHistoryError) {
       console.warn('⚠️ Erreur lors de la suppression de login_history:', loginHistoryError)
-      // Continue même en cas d'erreur (peut-être que la table n'existe pas ou est vide)
     } else {
       console.log('✅ Historique de connexion supprimé')
     }
 
-    // 2. Supprimer de la table users (cascade vers technician_services)
+    // Technician services (user_id - CASCADE)
+    await supabaseAdmin
+      .from('technician_services')
+      .delete()
+      .eq('user_id', userId)
+    
+    console.log('✅ Services du technicien supprimés')
+
+    // User wilayas (user_id - CASCADE)
+    await supabaseAdmin
+      .from('user_wilayas')
+      .delete()
+      .eq('user_id', userId)
+    
+    console.log('✅ Wilayas assignées supprimées')
+
+    // User regions (user_id - CASCADE)
+    await supabaseAdmin
+      .from('user_regions')
+      .delete()
+      .eq('user_id', userId)
+    
+    console.log('✅ Régions assignées supprimées')
+
+    // 3. Supprimer de la table users
+    // =====================================================
     const { error: dbError } = await supabaseAdmin
       .from('users')
       .delete()
@@ -147,7 +222,7 @@ serve(async (req) => {
 
     console.log('✅ Utilisateur supprimé de la table users')
 
-    // 2. Supprimer de auth.users
+    // 4. Supprimer de auth.users
     const { error: authDeleteError } = await supabaseAdmin.auth.admin.deleteUser(userId)
 
     if (authDeleteError) {

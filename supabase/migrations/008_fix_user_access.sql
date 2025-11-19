@@ -15,7 +15,42 @@ ALTER TABLE login_history
   REFERENCES users(id) 
   ON DELETE CASCADE;
 
--- 2. Add access control fields to users table
+-- 2. Fix foreign key constraint in ticket_history
+-- =====================================================
+-- Drop the existing foreign key constraint
+ALTER TABLE ticket_history 
+  DROP CONSTRAINT IF EXISTS ticket_history_changed_by_fkey;
+
+-- Recreate with ON DELETE SET NULL to preserve history but allow user deletion
+ALTER TABLE ticket_history 
+  ADD CONSTRAINT ticket_history_changed_by_fkey 
+  FOREIGN KEY (changed_by) 
+  REFERENCES users(id) 
+  ON DELETE SET NULL;
+
+-- 3. Fix foreign key constraints in tickets
+-- =====================================================
+-- Drop existing foreign key constraints
+ALTER TABLE tickets 
+  DROP CONSTRAINT IF EXISTS tickets_created_by_fkey;
+
+ALTER TABLE tickets 
+  DROP CONSTRAINT IF EXISTS tickets_assigned_to_fkey;
+
+-- Recreate with ON DELETE SET NULL to preserve tickets but allow user deletion
+ALTER TABLE tickets 
+  ADD CONSTRAINT tickets_created_by_fkey 
+  FOREIGN KEY (created_by) 
+  REFERENCES users(id) 
+  ON DELETE SET NULL;
+
+ALTER TABLE tickets 
+  ADD CONSTRAINT tickets_assigned_to_fkey 
+  FOREIGN KEY (assigned_to) 
+  REFERENCES users(id) 
+  ON DELETE SET NULL;
+
+-- 4. Add access control fields to users table
 -- =====================================================
 ALTER TABLE users 
   ADD COLUMN IF NOT EXISTS can_access_installation BOOLEAN DEFAULT true,
