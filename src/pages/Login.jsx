@@ -38,7 +38,7 @@ export default function Login() {
         .single()
 
       // Log login in activity_logs
-      await supabase.from('activity_logs').insert({
+      const logData = {
         user_id: data.user.id,
         user_name: userData?.full_name || email,
         user_email: userData?.email || email,
@@ -47,7 +47,19 @@ export default function Login() {
         entity_id: data.user.id,
         entity_name: userData?.full_name || email,
         description: 'Connexion utilisateur'
-      })
+      }
+      
+      const { data: logResult, error: logError } = await supabase
+        .from('activity_logs')
+        .insert([logData])
+        .select()
+      
+      if (logError) {
+        console.error('❌ Erreur lors de l\'enregistrement du log LOGIN:', logError)
+        console.error('Données du log:', logData)
+      } else {
+        console.log('✅ Log LOGIN enregistré avec succès:', logResult)
+      }
 
       // Log login attempt in login_history
       await supabase.from('login_history').insert({

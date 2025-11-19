@@ -45,16 +45,29 @@ export default function ActivityLogs() {
 
       const { data, error } = await query
 
-      if (error) throw error
+      if (error) {
+        console.error('❌ Erreur lors de la récupération des logs:', error)
+        console.error('Requête:', query)
+        throw error
+      }
+      
       const safeData = data || []
+      console.log('📊 Logs récupérés:', safeData.length)
+      console.log('📋 Détails des logs:', safeData)
       setLogs(safeData)
 
       // Build latest session status per user (most recent LOGIN/LOGOUT per user)
       // Since logs are sorted DESC, first occurrence per user_id is the most recent
       const sessions = {}
       safeData.forEach(log => {
-        if (!log?.user_id) return
-        if (!['LOGIN', 'LOGOUT'].includes(log.action)) return
+        if (!log?.user_id) {
+          console.warn('⚠️ Log sans user_id:', log)
+          return
+        }
+        if (!['LOGIN', 'LOGOUT'].includes(log.action)) {
+          console.warn('⚠️ Log avec action non LOGIN/LOGOUT:', log.action)
+          return
+        }
         // Only set if not already set (first = most recent due to DESC sort)
         if (!sessions[log.user_id]) {
           sessions[log.user_id] = {
@@ -67,8 +80,9 @@ export default function ActivityLogs() {
       })
       setSessionStatus(sessions)
       
-      console.log('Session status calculated:', sessions)
-      console.log('Total logs loaded:', safeData.length)
+      console.log('✅ Session status calculé:', sessions)
+      console.log('📊 Total logs chargés:', safeData.length)
+      console.log('👥 Utilisateurs avec statut:', Object.keys(sessions).length)
     } catch (error) {
       console.error('Error loading logs:', error)
       setErrorMessage('Une erreur s\'est produite lors du chargement des journaux.')
@@ -216,6 +230,33 @@ export default function ActivityLogs() {
           </div>
         </div>
       </div>
+
+      {/* Error Message */}
+      {errorMessage && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+          <div className="flex items-center gap-2">
+            <span className="text-red-600 font-semibold">⚠️ Erreur</span>
+            <span className="text-red-700">{errorMessage}</span>
+          </div>
+          <p className="text-sm text-red-600 mt-2">
+            Vérifiez la console du navigateur (F12) pour plus de détails.
+          </p>
+        </div>
+      )}
+
+      {/* Info Message if no logs */}
+      {!loading && logs.length === 0 && !errorMessage && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+          <div className="flex items-center gap-2">
+            <span className="text-yellow-600 font-semibold">ℹ️ Information</span>
+            <span className="text-yellow-700">Aucun log de connexion/déconnexion trouvé.</span>
+          </div>
+          <p className="text-sm text-yellow-600 mt-2">
+            Les logs seront créés automatiquement lors des prochaines connexions/déconnexions.
+            Vérifiez la console du navigateur (F12) pour voir si les logs sont bien enregistrés.
+          </p>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="bg-white rounded-lg shadow-md p-4 mb-6">

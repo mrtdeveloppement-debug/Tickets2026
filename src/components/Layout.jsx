@@ -83,7 +83,7 @@ export default function Layout({ children }) {
           .single()
 
         // Log logout in activity_logs
-        await supabase.from('activity_logs').insert({
+        const logData = {
           user_id: user.id,
           user_name: userData?.full_name || user.email,
           user_email: userData?.email || user.email,
@@ -92,7 +92,19 @@ export default function Layout({ children }) {
           entity_id: user.id,
           entity_name: userData?.full_name || user.email,
           description: 'Déconnexion utilisateur'
-        })
+        }
+        
+        const { data: logResult, error: logError } = await supabase
+          .from('activity_logs')
+          .insert([logData])
+          .select()
+        
+        if (logError) {
+          console.error('❌ Erreur lors de l\'enregistrement du log LOGOUT:', logError)
+          console.error('Données du log:', logData)
+        } else {
+          console.log('✅ Log LOGOUT enregistré avec succès:', logResult)
+        }
       }
     } catch (error) {
       console.error('Error logging logout:', error)
