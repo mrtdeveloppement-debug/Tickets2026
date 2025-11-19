@@ -144,7 +144,7 @@ export default function Dashboard() {
       const hours = Math.floor((new Date() - new Date(ticket.created_at)) / (1000 * 60 * 60))
       const inst = normalizeStatus(getInstallationStatus(ticket))
       const overdueStatuses = new Set(['materiel', 'equipe_installation', 'optimisation', 'extension', 'manque_de_materiel'])
-      return hours >= 24 && overdueStatuses.has(inst)
+      return hours >= 48 && overdueStatuses.has(inst)
     } catch (e) {
       return false
     }
@@ -708,7 +708,7 @@ export default function Dashboard() {
               if (stat.statusParam) {
                 if (dashboardCategory === 'installation') {
                   if (stat.statusParam === 'en_retard') {
-                    navigate(`/tickets?category=installation&overdue=24`)
+                    navigate(`/tickets?category=installation&overdue=48`)
                   } else {
                     navigate(`/tickets?category=installation&install_status=${encodeURIComponent(stat.statusParam)}`)
                   }

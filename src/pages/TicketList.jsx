@@ -116,13 +116,13 @@ export default function TicketList() {
       })
     }
 
-    if (category === 'installation' && overdueFilter === '24') {
+    if (category === 'installation' && overdueFilter === '48') {
       filtered = filtered.filter(ticket => {
         const createdDate = new Date(ticket.created_at)
         const hours = Math.floor((new Date() - createdDate) / (1000 * 60 * 60))
         const inst = norm(getInstallationStatus(ticket))
         const overdueSet = new Set(['materiel','equipe_installation','optimisation','extension','manque_de_materiel'])
-        return hours >= 24 && overdueSet.has(inst)
+        return hours >= 48 && overdueSet.has(inst)
       })
     }
 

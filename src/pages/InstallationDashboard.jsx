@@ -118,11 +118,11 @@ export default function InstallationDashboard() {
     const ticketStatus = normalizeKey(getInstallationStatus(ticket));
     const isRelevantStatus = overdueStatuses.includes(ticketStatus);
     
-    // Vérifier que le ticket a >= 24h
+    // Vérifier que le ticket a >= 48h
     const createdDate = new Date(ticket.created_at);
     const now = new Date();
     const hoursElapsed = (now - createdDate) / (1000 * 60 * 60);
-    const isOverdue = hoursElapsed >= 24;
+    const isOverdue = hoursElapsed >= 48;
     
     // Debug log
     if (isRelevantStatus && isOverdue) {
@@ -135,7 +135,7 @@ export default function InstallationDashboard() {
   const selectStatus = (status) => {
     setSelectedStatus(prev => (prev === status ? '' : status))
     if (status === 'en_retard') {
-      navigate(`/tickets?category=installation&overdue=24`)
+      navigate(`/tickets?category=installation&overdue=48`)
     } else {
       navigate(`/tickets?category=installation&install_status=${encodeURIComponent(status)}`)
     }
@@ -143,7 +143,7 @@ export default function InstallationDashboard() {
   }
   const selectOverdue = () => {
     setSelectedStatus('en_retard')
-    navigate(`/tickets?category=installation&overdue=24`)
+    navigate(`/tickets?category=installation&overdue=48`)
     if (ticketsRef.current) ticketsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
@@ -209,9 +209,9 @@ export default function InstallationDashboard() {
           if (!counts[key]) delete counts[key];
         });
 
-        // Compter les tickets en retard (>= 24h)
+        // Compter les tickets en retard (>= 48h)
         const overdueTickets = normalized.filter(t => isTicketOverdue(t));
-        counts['overdue24'] = overdueTickets.length;
+        counts['overdue48'] = overdueTickets.length;
 
         // Ensure the total count matches the displayed tickets
         setStatusCounts({ ...counts, total: installationTickets.length });
@@ -478,8 +478,8 @@ export default function InstallationDashboard() {
           </div>
           <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between cursor-pointer" onClick={selectOverdue}>
             <div>
-              <div className="text-sm text-gray-500">En retard (≥24h)</div>
-              <div className="text-2xl font-bold">{getCount('overdue24')}</div>
+              <div className="text-sm text-gray-500">En retard (≥48h)</div>
+              <div className="text-2xl font-bold">{getCount('overdue48')}</div>
             </div>
             <button className={`p-3 bg-red-600 rounded-lg flex items-center justify-center ${selectedStatus==='en_retard'?'ring-2 ring-red-400':''}`}>
               <Clock className="text-white" size={24} />
