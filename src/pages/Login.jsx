@@ -37,28 +37,47 @@ export default function Login() {
         .eq('id', data.user.id)
         .single()
 
-      // Log login in activity_logs
-      const logData = {
-        user_id: data.user.id,
-        user_name: userData?.full_name || email,
-        user_email: userData?.email || email,
-        action: 'LOGIN',
-        entity_type: 'user',
-        entity_id: data.user.id,
-        entity_name: userData?.full_name || email,
-        description: 'Connexion utilisateur'
-      }
-      
-      const { data: logResult, error: logError } = await supabase
-        .from('activity_logs')
-        .insert([logData])
-        .select()
-      
-      if (logError) {
-        console.error('❌ Erreur lors de l\'enregistrement du log LOGIN:', logError)
-        console.error('Données du log:', logData)
-      } else {
-        console.log('✅ Log LOGIN enregistré avec succès:', logResult)
+      // Log login in activity_logs using the log_activity function (SECURITY DEFINER)
+      // This bypasses RLS issues
+      try {
+        const { data: logResult, error: logError } = await supabase.rpc('log_activity', {
+          p_action: 'LOGIN',
+          p_entity_type: 'user',
+          p_entity_id: data.user.id,
+          p_entity_name: userData?.full_name || email,
+          p_description: 'Connexion utilisateur'
+        })
+        
+        if (logError) {
+          console.error('❌ Erreur lors de l\'enregistrement du log LOGIN (RPC):', logError)
+          // Fallback: try direct insert
+          const logData = {
+            user_id: data.user.id,
+            user_name: userData?.full_name || email,
+            user_email: userData?.email || email,
+            action: 'LOGIN',
+            entity_type: 'user',
+            entity_id: data.user.id,
+            entity_name: userData?.full_name || email,
+            description: 'Connexion utilisateur'
+          }
+          
+          const { data: directResult, error: directError } = await supabase
+            .from('activity_logs')
+            .insert([logData])
+            .select()
+          
+          if (directError) {
+            console.error('❌ Erreur lors de l\'enregistrement direct du log LOGIN:', directError)
+            console.error('Données du log:', logData)
+          } else {
+            console.log('✅ Log LOGIN enregistré avec succès (insertion directe):', directResult)
+          }
+        } else {
+          console.log('✅ Log LOGIN enregistré avec succès (RPC):', logResult)
+        }
+      } catch (err) {
+        console.error('❌ Exception lors de l\'enregistrement du log LOGIN:', err)
       }
 
       // Log login attempt in login_history

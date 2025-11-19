@@ -25,6 +25,7 @@ export default function InstallationDashboard() {
   const [sawiByRegion, setSawiByRegion] = useState([])
   const [lateSawiByRegion, setLateSawiByRegion] = useState([])
   const [lateSawiNkcByZone, setLateSawiNkcByZone] = useState([])
+  const [lateByStatus, setLateByStatus] = useState([])
   const [installationTickets, setInstallationTickets] = useState([])
   const [timeRange, setTimeRange] = useState('all')
   const [statusCounts, setStatusCounts] = useState({})
@@ -380,6 +381,21 @@ export default function InstallationDashboard() {
         console.log('lateSawiNkcByZone data:', lateSawiNkcZoneMap);
         setLateSawiNkcByZone(Object.entries(lateSawiNkcZoneMap));
 
+        // Graph 6: Tickets en Retard par Statut
+        const lateByStatusMap = {};
+        installationTicketsForGraphs.forEach(t => {
+          if (isTicketOverdue(t)) {
+            const status = getInstallationStatus(t);
+            // Formater le statut pour l'affichage
+            const statusLabel = status || 'Non spécifié';
+            lateByStatusMap[statusLabel] = (lateByStatusMap[statusLabel] || 0) + 1;
+          }
+        });
+        // Trier par nombre décroissant
+        const sortedLateByStatus = Object.entries(lateByStatusMap)
+          .sort((a, b) => b[1] - a[1]);
+        setLateByStatus(sortedLateByStatus);
+
       } catch (error) {
         console.error('Erreur lors du chargement des données des graphes:', error);
       }
@@ -695,7 +711,7 @@ export default function InstallationDashboard() {
                     datasets: [{
                       label: 'Tickets SAWI NKC en Retard',
                       data: lateSawiNkcByZoneSorted.map(([, count]) => count),
-                      backgroundColor: '#f59e42'
+                      backgroundColor: '#ef4444'
                     }]
                   }}
                   options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }}
@@ -703,6 +719,52 @@ export default function InstallationDashboard() {
               </div>
             ) : (
               <p className="text-gray-500 text-sm">Aucun ticket SAWI NKC en retard</p>
+            )}
+          </div>
+        </div>
+
+        {/* Graph 6: Tickets en Retard par Statut */}
+        <div className="grid grid-cols-1 gap-6">
+          <div className="bg-white rounded-lg shadow-md p-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">Graph 6: Tickets en Retard par Statut</h3>
+            {lateByStatus.length > 0 ? (
+              <div style={{ height: '350px' }}>
+                <Bar
+                  data={{
+                    labels: lateByStatus.map(([status]) => status),
+                    datasets: [{
+                      label: 'Nombre de Tickets en Retard',
+                      data: lateByStatus.map(([, count]) => count),
+                      backgroundColor: '#ef4444'
+                    }]
+                  }}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                      legend: { position: 'bottom' },
+                      tooltip: {
+                        callbacks: {
+                          label: function(context) {
+                            return `${context.dataset.label}: ${context.parsed.y}`;
+                          }
+                        }
+                      }
+                    },
+                    scales: {
+                      y: {
+                        beginAtZero: true,
+                        ticks: {
+                          stepSize: 1,
+                          precision: 0
+                        }
+                      }
+                    }
+                  }}
+                />
+              </div>
+            ) : (
+              <p className="text-gray-500 text-sm">Aucun ticket en retard</p>
             )}
           </div>
         </div>

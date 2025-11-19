@@ -19,11 +19,20 @@ export default function ActivityLogs() {
   useEffect(() => {
     loadLogs()
     loadUsers()
+    
+    // Auto-refresh every 30 seconds to catch new logs (silent refresh)
+    const interval = setInterval(() => {
+      loadLogs(false) // Don't show loading indicator for auto-refresh
+    }, 30000)
+    
+    return () => clearInterval(interval)
   }, [])
 
-  const loadLogs = async () => {
+  const loadLogs = async (showLoading = true) => {
     try {
-      setLoading(true)
+      if (showLoading) {
+        setLoading(true)
+      }
       setErrorMessage('') // Clear previous error messages
       let query = supabase
         .from('activity_logs')

@@ -82,28 +82,47 @@ export default function Layout({ children }) {
           .eq('id', user.id)
           .single()
 
-        // Log logout in activity_logs
-        const logData = {
-          user_id: user.id,
-          user_name: userData?.full_name || user.email,
-          user_email: userData?.email || user.email,
-          action: 'LOGOUT',
-          entity_type: 'user',
-          entity_id: user.id,
-          entity_name: userData?.full_name || user.email,
-          description: 'Déconnexion utilisateur'
-        }
-        
-        const { data: logResult, error: logError } = await supabase
-          .from('activity_logs')
-          .insert([logData])
-          .select()
-        
-        if (logError) {
-          console.error('❌ Erreur lors de l\'enregistrement du log LOGOUT:', logError)
-          console.error('Données du log:', logData)
-        } else {
-          console.log('✅ Log LOGOUT enregistré avec succès:', logResult)
+        // Log logout in activity_logs using the log_activity function (SECURITY DEFINER)
+        // This bypasses RLS issues
+        try {
+          const { data: logResult, error: logError } = await supabase.rpc('log_activity', {
+            p_action: 'LOGOUT',
+            p_entity_type: 'user',
+            p_entity_id: user.id,
+            p_entity_name: userData?.full_name || user.email,
+            p_description: 'Déconnexion utilisateur'
+          })
+          
+          if (logError) {
+            console.error('❌ Erreur lors de l\'enregistrement du log LOGOUT (RPC):', logError)
+            // Fallback: try direct insert
+            const logData = {
+              user_id: user.id,
+              user_name: userData?.full_name || user.email,
+              user_email: userData?.email || user.email,
+              action: 'LOGOUT',
+              entity_type: 'user',
+              entity_id: user.id,
+              entity_name: userData?.full_name || user.email,
+              description: 'Déconnexion utilisateur'
+            }
+            
+            const { data: directResult, error: directError } = await supabase
+              .from('activity_logs')
+              .insert([logData])
+              .select()
+            
+            if (directError) {
+              console.error('❌ Erreur lors de l\'enregistrement direct du log LOGOUT:', directError)
+              console.error('Données du log:', logData)
+            } else {
+              console.log('✅ Log LOGOUT enregistré avec succès (insertion directe):', directResult)
+            }
+          } else {
+            console.log('✅ Log LOGOUT enregistré avec succès (RPC):', logResult)
+          }
+        } catch (err) {
+          console.error('❌ Exception lors de l\'enregistrement du log LOGOUT:', err)
         }
       }
     } catch (error) {
