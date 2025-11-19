@@ -56,6 +56,9 @@ export default function TicketList() {
         // Inclure si installation_status est défini et non vide
         if (t.installation_status && String(t.installation_status).trim() !== '') return true;
         
+        // Inclure si le ticket a un historique de changement de statut d'installation
+        if (installStatusByTicket[t.id]) return true;
+        
         // Exclure les tickets de réclamation (complaint_type n'est pas null)
         if (t.complaint_type !== null && t.complaint_type !== undefined) return false;
         
@@ -84,11 +87,33 @@ export default function TicketList() {
     }
 
     if (statusFilter !== 'all') {
-      filtered = filtered.filter(ticket => (
-        category === 'installation'
-          ? norm(getInstallationStatus(ticket)) === norm(statusFilter)
-          : ticket.status === statusFilter
-      ))
+      filtered = filtered.filter(ticket => {
+        if (category === 'installation') {
+          const ticketInstallStatus = getInstallationStatus(ticket)
+          // Normaliser les deux statuts de la même manière
+          const normalizedTicketStatus = norm(ticketInstallStatus)
+          const normalizedFilter = norm(statusFilter)
+          const matches = normalizedTicketStatus === normalizedFilter
+          
+          // Debug log pour tous les statuts d'installation
+          console.log('TicketList - Filtrage statut installation:', {
+            ticketId: ticket.id,
+            ticketNumber: ticket.ticket_number,
+            ticketInstallStatus,
+            normalizedTicketStatus,
+            statusFilter,
+            normalizedFilter,
+            matches,
+            fromHist: installStatusByTicket[ticket.id],
+            rawInstallStatus: ticket.installation_status,
+            ticketStatus: ticket.status
+          })
+          
+          return matches
+        } else {
+          return ticket.status === statusFilter
+        }
+      })
     }
 
     if (category === 'installation' && overdueFilter === '24') {
@@ -220,7 +245,8 @@ export default function TicketList() {
     const raw = ticket.installation_status
     const has = raw && String(raw).trim() !== ''
     if (has) return String(raw)
-    return 'matériel'
+    // Si pas de statut d'installation, mapper depuis le statut du ticket
+    return mapAllowedToInstallStatus(ticket.status || '')
   }
 
   const handleStatusChange = (ticketId, newStatus, isInstallation = false) => {

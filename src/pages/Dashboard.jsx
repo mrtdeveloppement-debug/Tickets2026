@@ -203,13 +203,9 @@ export default function Dashboard() {
 
       if (error) throw error
 
-      let baseTickets = (tickets || []).filter(t => (
-        dashboardCategory === 'installation'
-          ? (t.category === 'installation' || !!t.installation_status || t.complaint_type == null)
-          : (t.category === 'reclamation' || (t.category == null && t.complaint_type != null))
-      ))
-
+      // Charger l'historique d'abord pour savoir quels tickets ont un statut d'installation
       let histIds = new Set()
+      let histMap = {}
       if ((tickets || []).length > 0) {
         const ids = (tickets || []).map(t => t.id)
         const { data: hist } = await supabase
@@ -218,23 +214,35 @@ export default function Dashboard() {
           .in('ticket_id', ids)
           .eq('action', 'installation_status_change')
           .order('created_at', { ascending: false })
-        const map = {}
         for (const h of (hist || [])) {
-          if (!map[h.ticket_id]) {
-            map[h.ticket_id] = h.to_status || 'matériel'
+          if (!histMap[h.ticket_id]) {
+            histMap[h.ticket_id] = h.to_status || 'matériel'
           }
           histIds.add(h.ticket_id)
         }
-        setInstallStatusOverrideById(map)
+        setInstallStatusOverrideById(histMap)
       } else {
         setInstallStatusOverrideById({})
       }
 
-      if (dashboardCategory === 'installation' && histIds.size > 0) {
-        baseTickets = (tickets || []).filter(t => (
-          t.category === 'installation' || histIds.has(t.id) || !!t.installation_status || t.complaint_type == null
-        ))
-      }
+      // Filtrer les tickets en incluant ceux qui ont un historique d'installation
+      let baseTickets = (tickets || []).filter(t => {
+        if (dashboardCategory === 'installation') {
+          // Inclure si category est explicitement 'installation'
+          if (t.category === 'installation') return true
+          // Inclure si installation_status est défini et non vide
+          if (t.installation_status && String(t.installation_status).trim() !== '') return true
+          // Inclure si le ticket a un historique de changement de statut d'installation
+          if (histIds.has(t.id)) return true
+          // Exclure les tickets de réclamation (complaint_type n'est pas null)
+          if (t.complaint_type !== null && t.complaint_type !== undefined) return false
+          // Inclure les autres tickets (sans complaint_type)
+          return t.complaint_type == null
+        } else {
+          // Réclamations
+          return (t.category === 'reclamation' || (t.category == null && t.complaint_type != null))
+        }
+      })
 
       // Calculate stats
       const total = baseTickets.length
@@ -282,10 +290,57 @@ export default function Dashboard() {
       // Installation stats (counts by installation_status)
       if (dashboardCategory === 'installation') {
         const byStatus = {}
+        // Normaliser les statuts pour correspondre aux clés dans INSTALLATION_STATUSES
+        const normalizeStatusKey = (status) => {
+          const normalized = normalizeStatus(status)
+          // Mapper les variantes normalisées vers les clés exactes
+          const statusMap = {
+            'installe': 'installé',
+            'materiel': 'matériel',
+            'equipe_installation': 'équipe_installation',
+            'injoignable': 'injoignable',
+            'installation_impossible': 'installation_impossible',
+            'optimisation': 'optimisation',
+            'extension': 'extension',
+            'manque_de_materiel': 'manque_de_materiel',
+            'annule': 'annulé'
+          }
+          // Chercher la clé correspondante dans INSTALLATION_STATUSES
+          for (const key of INSTALLATION_STATUSES) {
+            if (normalizeStatus(key) === normalized) {
+              return key
+            }
+          }
+          // Si pas trouvé, retourner le statut original
+          return status
+        }
+        
         baseTickets.forEach(t => {
           const s = getInstallationStatus(t)
-          byStatus[s] = (byStatus[s] || 0) + 1
+          const normalizedKey = normalizeStatusKey(s)
+          byStatus[normalizedKey] = (byStatus[normalizedKey] || 0) + 1
+          
+          // Debug log pour "installé" et "manque_de_materiel"
+          if (s && (s.includes('install') || s.includes('manque') || s.includes('materiel'))) {
+            console.log('Dashboard - Comptage statut:', {
+              ticketId: t.id,
+              ticketNumber: t.ticket_number,
+              rawStatus: s,
+              normalizedKey,
+              fromHist: installStatusOverrideById[t.id],
+              fromDB: t.installation_status,
+              ticketStatus: t.status
+            })
+          }
         })
+        
+        // Debug log pour voir les comptages finaux
+        console.log('Dashboard - Stats d\'installation:', {
+          total: baseTickets.length,
+          byStatus,
+          installStatusOverrideById: Object.keys(installStatusOverrideById).length
+        })
+        
         const overdueCount = baseTickets.filter(isInstallationOverdue).length
         setInstallStats({ total: baseTickets.length, byStatus })
         setInstallOverdueCount(overdueCount)
