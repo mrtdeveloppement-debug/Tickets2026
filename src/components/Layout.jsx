@@ -72,8 +72,34 @@ export default function Layout({ children }) {
   }, [adminMenuOpen])
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
-    navigate('/login')
+    try {
+      // Get current user info before logout
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: userData } = await supabase
+          .from('users')
+          .select('full_name, email')
+          .eq('id', user.id)
+          .single()
+
+        // Log logout in activity_logs
+        await supabase.from('activity_logs').insert({
+          user_id: user.id,
+          user_name: userData?.full_name || user.email,
+          user_email: userData?.email || user.email,
+          action: 'LOGOUT',
+          entity_type: 'user',
+          entity_id: user.id,
+          entity_name: userData?.full_name || user.email,
+          description: 'Déconnexion utilisateur'
+        })
+      }
+    } catch (error) {
+      console.error('Error logging logout:', error)
+    } finally {
+      await supabase.auth.signOut()
+      navigate('/login')
+    }
   }
 
   const changeLanguage = (lng) => {
@@ -95,7 +121,7 @@ export default function Layout({ children }) {
   const dashboardPath = uiMode === 'installation' ? '/installation' : '/reclamation'
   const navItems = [
     { path: dashboardPath, icon: LayoutDashboard, label: t('nav.dashboard') },
-    { path: newTicketPath, icon: PlusCircle, label: t('nav.newTicket') },
+    ...(userRole !== 'technicien' ? [{ path: newTicketPath, icon: PlusCircle, label: t('nav.newTicket') }] : []),
   ]
 
   // Admin menu items

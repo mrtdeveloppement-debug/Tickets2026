@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { supabase } from '../lib/supabase'
 import { supabaseAdmin } from '../lib/supabaseAdmin'
 import { UserPlus, Edit, Trash2, Shield, X, Save } from 'lucide-react'
-import { formatWilayaName, requiresRegionSelection } from '../utils/location'
+import { requiresRegionSelection } from '../utils/location'
 
 export default function AdminUsers() {
   const { t } = useTranslation()
@@ -17,7 +17,9 @@ export default function AdminUsers() {
     password: '',
     full_name: '',
     role: 'user',
-    is_active: true
+    is_active: true,
+    can_access_installation: true,
+    can_access_reclamation: true
   })
   const [selectedServices, setSelectedServices] = useState([])
   const [selectedWilayas, setSelectedWilayas] = useState([])
@@ -145,6 +147,8 @@ export default function AdminUsers() {
           full_name: formData.full_name,
           role: formData.role,
           is_active: formData.is_active,
+          can_access_installation: formData.can_access_installation,
+          can_access_reclamation: formData.can_access_reclamation,
           services: formData.role === 'technicien' ? selectedServices : [],
           wilayas: selectedWilayas,
           regions: selectedRegions
@@ -203,7 +207,9 @@ export default function AdminUsers() {
             email: formData.email,
             full_name: formData.full_name,
             role: formData.role,
-            is_active: formData.is_active
+            is_active: formData.is_active,
+            can_access_installation: formData.can_access_installation,
+            can_access_reclamation: formData.can_access_reclamation
           }])
 
         if (userError) throw userError
@@ -330,7 +336,9 @@ export default function AdminUsers() {
       password: '',
       full_name: user.full_name,
       role: user.role,
-      is_active: user.is_active
+      is_active: user.is_active,
+      can_access_installation: user.can_access_installation !== false,
+      can_access_reclamation: user.can_access_reclamation !== false
     })
     setSelectedServices(
       user.technician_services?.map(ts => ts.service_type) || []
@@ -357,7 +365,9 @@ export default function AdminUsers() {
       password: '',
       full_name: '',
       role: 'user',
-      is_active: true
+      is_active: true,
+      can_access_installation: true,
+      can_access_reclamation: true
     })
     setSelectedServices([])
     setSelectedWilayas([])
@@ -424,9 +434,6 @@ export default function AdminUsers() {
                   {t('admin.services')}
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  {t('admin.regions')}
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   {t('ticket.status')}
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -458,24 +465,6 @@ export default function AdminUsers() {
                         {user.technician_services.map((ts, idx) => (
                           <span key={idx} className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded">
                             {ts.service_type}
-                          </span>
-                        ))}
-                      </div>
-                    ) : (
-                      <span className="text-gray-400">-</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {user.role !== 'admin' && (user.user_wilayas?.length > 0 || user.user_regions?.length > 0) ? (
-                      <div className="space-y-1">
-                        {user.user_wilayas?.map((uw, idx) => (
-                          <span key={idx} className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded mr-1">
-                            {formatWilayaName(uw.wilayas?.name_fr, uw.wilaya_code)}
-                          </span>
-                        ))}
-                        {user.user_regions?.map((ur, idx) => (
-                          <span key={idx} className="px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded mr-1">
-                            {ur.regions?.name_fr}
                           </span>
                         ))}
                       </div>
@@ -691,6 +680,39 @@ export default function AdminUsers() {
                     Toutes les zones de NKC sont automatiquement accordées lorsque la wilaya NKC est sélectionnée.
                   </p>
                 )}
+
+                {/* Access Control */}
+                <div className="space-y-3">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Accès aux pages
+                  </label>
+                  <div className="space-y-2">
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id="can_access_installation"
+                        checked={formData.can_access_installation}
+                        onChange={(e) => setFormData({ ...formData, can_access_installation: e.target.checked })}
+                        className="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded"
+                      />
+                      <label htmlFor="can_access_installation" className="ml-2 block text-sm text-gray-700">
+                        Accès à la page Installation
+                      </label>
+                    </div>
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id="can_access_reclamation"
+                        checked={formData.can_access_reclamation}
+                        onChange={(e) => setFormData({ ...formData, can_access_reclamation: e.target.checked })}
+                        className="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded"
+                      />
+                      <label htmlFor="can_access_reclamation" className="ml-2 block text-sm text-gray-700">
+                        Accès à la page Réclamation
+                      </label>
+                    </div>
+                  </div>
+                </div>
 
                 {/* Active Status */}
                 <div className="flex items-center">

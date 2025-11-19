@@ -121,7 +121,20 @@ serve(async (req) => {
 
     console.log('🗑️ Suppression de l\'utilisateur:', userId)
 
-    // 1. Supprimer de la table users (cascade vers technician_services)
+    // 1. Supprimer les enregistrements de login_history
+    const { error: loginHistoryError } = await supabaseAdmin
+      .from('login_history')
+      .delete()
+      .eq('user_id', userId)
+
+    if (loginHistoryError) {
+      console.warn('⚠️ Erreur lors de la suppression de login_history:', loginHistoryError)
+      // Continue même en cas d'erreur (peut-être que la table n'existe pas ou est vide)
+    } else {
+      console.log('✅ Historique de connexion supprimé')
+    }
+
+    // 2. Supprimer de la table users (cascade vers technician_services)
     const { error: dbError } = await supabaseAdmin
       .from('users')
       .delete()

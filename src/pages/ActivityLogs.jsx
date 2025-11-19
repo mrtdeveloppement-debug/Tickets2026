@@ -49,20 +49,26 @@ export default function ActivityLogs() {
       const safeData = data || []
       setLogs(safeData)
 
-      // Build latest session status per user (first LOGIN/LOGOUT in sorted logs)
+      // Build latest session status per user (most recent LOGIN/LOGOUT per user)
+      // Since logs are sorted DESC, first occurrence per user_id is the most recent
       const sessions = {}
       safeData.forEach(log => {
         if (!log?.user_id) return
         if (!['LOGIN', 'LOGOUT'].includes(log.action)) return
-        if (sessions[log.user_id]) return
-        sessions[log.user_id] = {
-          status: log.action === 'LOGIN' ? 'online' : 'offline',
-          action: log.action,
-          timestamp: log.created_at,
-          userName: log.user_name || log.user_email || 'Système'
+        // Only set if not already set (first = most recent due to DESC sort)
+        if (!sessions[log.user_id]) {
+          sessions[log.user_id] = {
+            status: log.action === 'LOGIN' ? 'online' : 'offline',
+            action: log.action,
+            timestamp: log.created_at,
+            userName: log.user_name || log.user_email || 'Système'
+          }
         }
       })
       setSessionStatus(sessions)
+      
+      console.log('Session status calculated:', sessions)
+      console.log('Total logs loaded:', safeData.length)
     } catch (error) {
       console.error('Error loading logs:', error)
       setErrorMessage('Une erreur s\'est produite lors du chargement des journaux.')

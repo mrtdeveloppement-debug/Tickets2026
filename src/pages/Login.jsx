@@ -30,7 +30,26 @@ export default function Login() {
 
       if (error) throw error
 
-      // Log login attempt
+      // Get user info for activity log
+      const { data: userData } = await supabase
+        .from('users')
+        .select('full_name, email')
+        .eq('id', data.user.id)
+        .single()
+
+      // Log login in activity_logs
+      await supabase.from('activity_logs').insert({
+        user_id: data.user.id,
+        user_name: userData?.full_name || email,
+        user_email: userData?.email || email,
+        action: 'LOGIN',
+        entity_type: 'user',
+        entity_id: data.user.id,
+        entity_name: userData?.full_name || email,
+        description: 'Connexion utilisateur'
+      })
+
+      // Log login attempt in login_history
       await supabase.from('login_history').insert({
         user_id: data.user.id,
         email: email,

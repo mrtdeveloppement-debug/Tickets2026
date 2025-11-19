@@ -116,6 +116,8 @@ serve(async (req) => {
     if (updates.full_name) dbUpdates.full_name = updates.full_name
     if (updates.role) dbUpdates.role = updates.role
     if (updates.is_active !== undefined) dbUpdates.is_active = updates.is_active
+    if (updates.can_access_installation !== undefined) dbUpdates.can_access_installation = updates.can_access_installation
+    if (updates.can_access_reclamation !== undefined) dbUpdates.can_access_reclamation = updates.can_access_reclamation
 
     const { error: dbError } = await supabaseAdmin
       .from('users')

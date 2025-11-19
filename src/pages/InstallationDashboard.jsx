@@ -38,6 +38,33 @@ export default function InstallationDashboard() {
   const normalizeKey = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '_')
   // Correction : toujours afficher 0 si aucun ticket pour ce statut
   const getCount = (k) => (statusCounts[k] !== undefined ? statusCounts[k] : 0)
+  const [hasAccess, setHasAccess] = useState(true)
+
+  useEffect(() => {
+    checkAccess()
+  }, [])
+
+  const checkAccess = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: userData } = await supabase
+          .from('users')
+          .select('can_access_installation')
+          .eq('id', user.id)
+          .single()
+        
+        if (userData && userData.can_access_installation === false) {
+          setHasAccess(false)
+          alert('Vous n\'avez pas accès à la page Installation.')
+          navigate('/reclamation')
+          return
+        }
+      }
+    } catch (error) {
+      console.error('Error checking access:', error)
+    }
+  }
 
   const INSTALLATION_STATUSES = ['matériel','équipe_installation','installé','annulé','injoignable','installation_impossible','optimisation','extension','manque_de_materiel']
   
@@ -120,6 +147,7 @@ export default function InstallationDashboard() {
   }
 
   useEffect(() => {
+    if (!hasAccess) return
     const loadData = async () => {
       try {
         console.log('Début du chargement des données...');
@@ -255,6 +283,7 @@ export default function InstallationDashboard() {
   }, [installationTickets, statusCounts]);
 
   useEffect(() => {
+    if (!hasAccess) return
     const loadGraphData = async () => {
       try {
         let query = supabase

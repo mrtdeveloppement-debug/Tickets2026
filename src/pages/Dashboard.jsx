@@ -19,19 +19,17 @@ import {
   CategoryScale,
   LinearScale,
   BarElement,
-  ArcElement,
   Title,
   Tooltip,
   Legend,
 } from 'chart.js'
-import { Bar, Pie } from 'react-chartjs-2'
+import { Bar } from 'react-chartjs-2'
 import { formatTicketWilaya, isTicketInNouakchott } from '../utils/location'
 
 ChartJS.register(
   CategoryScale,
   LinearScale,
   BarElement,
-  ArcElement,
   Title,
   Tooltip,
   Legend
@@ -152,9 +150,39 @@ export default function Dashboard() {
     }
   }
 
+  const [hasAccess, setHasAccess] = useState(true)
+
   useEffect(() => {
-    loadDashboardData()
-  }, [timeRange, dashboardCategory])
+    checkAccess()
+  }, [])
+
+  const checkAccess = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: userData } = await supabase
+          .from('users')
+          .select('can_access_reclamation')
+          .eq('id', user.id)
+          .single()
+        
+        if (userData && userData.can_access_reclamation === false) {
+          setHasAccess(false)
+          alert('Vous n\'avez pas accès à la page Réclamation.')
+          navigate('/installation')
+          return
+        }
+      }
+    } catch (error) {
+      console.error('Error checking access:', error)
+    }
+  }
+
+  useEffect(() => {
+    if (hasAccess) {
+      loadDashboardData()
+    }
+  }, [timeRange, dashboardCategory, hasAccess])
 
   const loadDashboardData = async () => {
     try {
@@ -476,14 +504,6 @@ export default function Dashboard() {
     }]
   }
 
-  const serviceChartData = {
-    labels: serviceData.map(([name]) => name),
-    datasets: [{
-      data: serviceData.map(([, count]) => count),
-      backgroundColor: ['#22AA66', '#2bc47a', '#1a8850', '#15704a'],
-    }]
-  }
-
   const regionChartData = {
     labels: regionData.map(([name]) => name),
     datasets: [{
@@ -749,8 +769,8 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Row 2: Chart 4 & Chart 5 */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Row 2: Chart 4 */}
+        <div className="grid grid-cols-1 gap-6">
           {/* Chart 4: Late Tickets by Days */}
           <div className="bg-gradient-to-br from-white to-gray-50 rounded-xl shadow-lg hover:shadow-xl transition-shadow p-6 border border-gray-100">
             <div className="flex items-center justify-between mb-4">
@@ -790,37 +810,6 @@ export default function Dashboard() {
               </div>
             ) : (
               <p className="text-gray-500 text-sm text-center py-8">Aucun ticket en retard</p>
-            )}
-          </div>
-
-          {/* Chart 5: Tickets par Service */}
-          <div className="bg-gradient-to-br from-white to-gray-50 rounded-xl shadow-lg hover:shadow-xl transition-shadow p-6 border border-gray-100">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="text-lg font-bold text-gray-900">
-                  Graph 5: Tickets par Service
-                </h3>
-                <p className="text-xs text-gray-500 mt-1">Répartition globale</p>
-              </div>
-              <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                <span className="text-lg">🟢</span>
-              </div>
-            </div>
-            {serviceData.length > 0 ? (
-              <div style={{ height: '350px' }}>
-                <Pie
-                  data={serviceChartData}
-                  options={{
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                      legend: { position: 'bottom', labels: { font: { size: 11, weight: 500 } } }
-                    }
-                  }}
-                />
-              </div>
-            ) : (
-              <p className="text-gray-500 text-sm text-center py-8">Aucune donnée disponible</p>
             )}
           </div>
         </div>

@@ -28,9 +28,34 @@ export default function NewTicket() {
 
   const [complaintTypes, setComplaintTypes] = useState([])
 
+  const [userRole, setUserRole] = useState(null)
+
   useEffect(() => {
     loadReferenceData()
+    checkUserRole()
   }, [])
+
+  const checkUserRole = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: userData } = await supabase
+          .from('users')
+          .select('role')
+          .eq('id', user.id)
+          .single()
+        setUserRole(userData?.role)
+        
+        // Redirect technicians
+        if (userData?.role === 'technicien') {
+          navigate(category === 'installation' ? '/installation' : '/tickets')
+          alert('Les techniciens ne peuvent pas créer de tickets.')
+        }
+      }
+    } catch (error) {
+      console.error('Error checking user role:', error)
+    }
+  }
 
   useEffect(() => {
     const params = new URLSearchParams(location.search)

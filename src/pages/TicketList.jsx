@@ -18,11 +18,31 @@ export default function TicketList() {
   const [category, setCategory] = useState('reclamation')
   const [overdueFilter, setOverdueFilter] = useState(null)
   const [installStatusByTicket, setInstallStatusByTicket] = useState({})
+  const [userRole, setUserRole] = useState(null)
+  const [statusChangeModal, setStatusChangeModal] = useState({ show: false, ticketId: null, newStatus: null, isInstallation: false })
+  const [comment, setComment] = useState('')
   const location = useLocation()
 
   useEffect(() => {
     loadTickets()
+    checkUserRole()
   }, [category])
+
+  const checkUserRole = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: userData } = await supabase
+          .from('users')
+          .select('role')
+          .eq('id', user.id)
+          .single()
+        setUserRole(userData?.role)
+      }
+    } catch (error) {
+      console.error('Error checking user role:', error)
+    }
+  }
 
   const filterTickets = useCallback(() => {
     let filtered = tickets
@@ -203,7 +223,34 @@ export default function TicketList() {
     return 'matériel'
   }
 
-  const updateTicketStatus = async (ticketId, newStatus) => {
+  const handleStatusChange = (ticketId, newStatus, isInstallation = false) => {
+    if (userRole === 'technicien') {
+      setStatusChangeModal({ show: true, ticketId, newStatus, isInstallation })
+      setComment('')
+    } else {
+      if (isInstallation) {
+        updateInstallationStatus(ticketId, newStatus, '')
+      } else {
+        updateTicketStatus(ticketId, newStatus, '')
+      }
+    }
+  }
+
+  const confirmStatusChange = () => {
+    if (userRole === 'technicien' && !comment.trim()) {
+      alert('Veuillez ajouter un commentaire pour modifier le statut.')
+      return
+    }
+    if (statusChangeModal.isInstallation) {
+      updateInstallationStatus(statusChangeModal.ticketId, statusChangeModal.newStatus, comment)
+    } else {
+      updateTicketStatus(statusChangeModal.ticketId, statusChangeModal.newStatus, comment)
+    }
+    setStatusChangeModal({ show: false, ticketId: null, newStatus: null, isInstallation: false })
+    setComment('')
+  }
+
+  const updateTicketStatus = async (ticketId, newStatus, commentText = '') => {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       const actorName = user?.user_metadata?.full_name || user?.email || 'Utilisateur'
@@ -233,6 +280,7 @@ export default function TicketList() {
             to_status: newStatus,
             changed_by: user?.id || null,
             changed_by_name: actorName,
+            notes: commentText || null,
             created_at: new Date().toISOString()
           })
           loadTickets()
@@ -248,6 +296,7 @@ export default function TicketList() {
         to_status: newStatus,
         changed_by: user?.id || null,
         changed_by_name: actorName,
+        comment: commentText || null,
         created_at: new Date().toISOString()
       })
 
@@ -259,7 +308,7 @@ export default function TicketList() {
     }
   }
 
-  const updateInstallationStatus = async (ticketId, newStatus) => {
+  const updateInstallationStatus = async (ticketId, newStatus, commentText = '') => {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       const actorName = user?.user_metadata?.full_name || user?.email || 'Utilisateur'
@@ -300,6 +349,7 @@ export default function TicketList() {
         to_status: newStatus,
         changed_by: user?.id || null,
         changed_by_name: actorName,
+        comment: commentText || null,
         created_at: new Date().toISOString()
       })
 
@@ -329,12 +379,14 @@ export default function TicketList() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold text-gray-800">{category === 'installation' ? 'Installations' : 'Réclamations'}</h1>
-        <Link
-          to={category === 'installation' ? '/tickets/new?category=installation' : '/tickets/new?category=reclamation'}
-          className="bg-primary hover:bg-primary-dark text-white px-6 py-2 rounded-lg transition-colors"
-        >
-          + {t('ticket.new')}
-        </Link>
+        {userRole !== 'technicien' && (
+          <Link
+            to={category === 'installation' ? '/tickets/new?category=installation' : '/tickets/new?category=reclamation'}
+            className="bg-primary hover:bg-primary-dark text-white px-6 py-2 rounded-lg transition-colors"
+          >
+            + {t('ticket.new')}
+          </Link>
+        )}
       </div>
 
       {/* Actions Row */}
@@ -523,7 +575,7 @@ export default function TicketList() {
                           {category === 'installation' ? (
                             <select
                               value={getInstallationStatus(ticket) || 'matériel'}
-                              onChange={(e) => updateInstallationStatus(ticket.id, e.target.value)}
+                              onChange={(e) => handleStatusChange(ticket.id, e.target.value, true)}
                               className="px-2 py-1 text-xs font-semibold rounded-full border-0 cursor-pointer bg-gray-100 text-gray-800"
                             >
                               {INSTALLATION_STATUSES.map(status => (
@@ -533,7 +585,7 @@ export default function TicketList() {
                           ) : (
                             <select
                               value={ticket.status || 'nouveau'}
-                              onChange={(e) => updateTicketStatus(ticket.id, e.target.value)}
+                              onChange={(e) => handleStatusChange(ticket.id, e.target.value, false)}
                               className={`px-2 py-1 text-xs font-semibold rounded-full border-0 cursor-pointer ${
                                 ticket.status === 'fermé' ? 'bg-gray-100 text-gray-800' :
                                 ticket.status === 'en_retard' ? 'bg-red-100 text-red-800' :
@@ -584,6 +636,47 @@ export default function TicketList() {
           </table>
         </div>
       </div>
+
+      {/* Status Change Modal for Technicians */}
+      {statusChangeModal.show && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <h2 className="text-xl font-bold text-gray-900 mb-4">Modifier le statut</h2>
+            <p className="text-sm text-gray-600 mb-4">
+              En tant que technicien, vous devez ajouter un commentaire pour modifier le statut.
+            </p>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Commentaire *
+              </label>
+              <textarea
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                rows="4"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                placeholder="Expliquez la raison du changement de statut..."
+              />
+            </div>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setStatusChangeModal({ show: false, ticketId: null, newStatus: null, isInstallation: false })
+                  setComment('')
+                }}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={confirmStatusChange}
+                className="px-4 py-2 bg-primary hover:bg-primary-dark text-white rounded-lg"
+              >
+                Confirmer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
